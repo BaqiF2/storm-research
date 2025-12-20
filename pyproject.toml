@@ -1,0 +1,20 @@
+[project]
+name = "storm-research"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "dspy_ai==2.4.9",
+    "wikipedia==1.4.0",
+    "sentence-transformers",
+    "toml",
+    "langchain-text-splitters",
+    "trafilatura",
+    "langchain-huggingface",
+    "qdrant-client",
+    "langchain-qdrant",
+    "numpy",
+    "litellm",
+    "diskcache"
+]
