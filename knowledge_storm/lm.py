@@ -1,3 +1,33 @@
+"""
+语言模型统一接口模块 (Language Model Interface Module)
+
+本文件提供了 STORM 系统与各种大语言模型 (LLM) 交互的统一接口层。
+
+主要功能:
+1. 统一的 LLM 调用接口 - 通过 LiteLLM 支持 100+ 种模型 (OpenAI, Anthropic, Azure 等)
+2. 内置缓存机制 - 使用 LRU 缓存和磁盘缓存减少重复 API 调用
+3. Token 使用量追踪 - 记录 prompt_tokens 和 completion_tokens 用于成本监控
+4. 自动重试机制 - 使用 backoff 处理 API 速率限制和临时错误
+
+核心类:
+- LM: 基础语言模型类，使用 LiteLLM 作为后端
+- LitellmModel: LiteLLM 的封装类，带有 token 使用量追踪
+- OpenAIModel: OpenAI API 封装 (已弃用，保留向后兼容)
+- DeepSeekModel: DeepSeek API 封装
+- AzureOpenAIModel: Azure OpenAI 端点封装
+- GroqModel: Groq API 封装
+- ClaudeModel: Anthropic Claude API 封装
+- VLLMClient: 本地 VLLM 服务器客户端
+- OllamaClient: Ollama 本地模型客户端
+- TogetherClient: Together AI 平台客户端
+
+使用示例:
+    from knowledge_storm.lm import LitellmModel
+
+    lm = LitellmModel(model="openai/gpt-4o-mini", api_key="your-key")
+    response = lm(prompt="Hello, world!")
+"""
+
 import backoff
 import dspy
 import functools
@@ -364,7 +394,19 @@ class OpenAIModel(dspy.OpenAI):
 
 
 class DeepSeekModel(dspy.OpenAI):
-    """A wrapper class for DeepSeek API, compatible with dspy.OpenAI."""
+    """DeepSeek API的包装类，兼容dspy.OpenAI接口。
+
+    该类封装了DeepSeek的聊天API，提供了与DSPy框架兼容的接口，
+    并支持token使用量统计和自动重试机制。
+
+    Attributes:
+        model: 使用的DeepSeek模型名称，默认为"deepseek-chat"
+        api_key: DeepSeek API密钥
+        api_base: API基础URL
+        prompt_tokens: 累计使用的提示词token数量
+        completion_tokens: 累计生成的补全token数量
+        _token_usage_lock: 用于线程安全的token计数锁
+    """
 
     def __init__(
         self,
@@ -373,60 +415,133 @@ class DeepSeekModel(dspy.OpenAI):
         api_base: str = "https://api.deepseek.com",
         **kwargs,
     ):
+        """初始化DeepSeekModel实例。
+
+        Args:
+            model: 模型名称，默认为"deepseek-chat"
+            api_key: API密钥，如果未提供则从环境变量DEEPSEEK_API_KEY读取
+            api_base: API基础URL，默认为DeepSeek官方地址
+            **kwargs: 其他传递给父类的参数
+
+        Raises:
+            ValueError: 当API密钥未提供且环境变量中也不存在时
+        """
+        # 调用父类OpenAI的初始化方法
         super().__init__(model=model, api_key=api_key, api_base=api_base, **kwargs)
+
+        # 初始化线程锁，用于保护token计数的线程安全
         self._token_usage_lock = threading.Lock()
-        self.prompt_tokens = 0
-        self.completion_tokens = 0
+
+        # 初始化token使用量计数器
+        self.prompt_tokens = 0  # 提示词token计数
+        self.completion_tokens = 0  # 生成补全token计数
+
+        # 保存模型配置信息
         self.model = model
-        self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
+        self.api_key = api_key or os.getenv(
+            "DEEPSEEK_API_KEY"
+        )  # 优先使用参数，否则从环境变量获取
         self.api_base = api_base
+
+        # 验证API密钥是否存在
         if not self.api_key:
             raise ValueError(
                 "DeepSeek API key must be provided either as an argument or as an environment variable DEEPSEEK_API_KEY"
             )
 
     def log_usage(self, response):
-        """Log the total tokens from the DeepSeek API response."""
+        """记录DeepSeek API响应中的token使用量。
+
+        从API响应中提取token使用信息并累加到实例的计数器中。
+        使用线程锁确保多线程环境下的数据一致性。
+
+        Args:
+            response: DeepSeek API返回的响应字典，包含usage字段
+        """
+        # 从响应中获取使用量数据
         usage_data = response.get("usage")
         if usage_data:
+            # 使用线程锁保护临界区，防止并发修改计数器
             with self._token_usage_lock:
+                # 累加提示词token数量
                 self.prompt_tokens += usage_data.get("prompt_tokens", 0)
+                # 累加生成补全token数量
                 self.completion_tokens += usage_data.get("completion_tokens", 0)
 
     def get_usage_and_reset(self):
-        """Get the total tokens used and reset the token usage."""
+        """获取累计的token使用量并重置计数器。
+
+        该方法返回当前累计的token使用情况，并将计数器重置为0。
+        通常用于统计一段时间内的API使用量。
+
+        Returns:
+            dict: 包含模型名称和token使用量的字典，格式为：
+                {
+                    model_name: {
+                        "prompt_tokens": int,
+                        "completion_tokens": int
+                    }
+                }
+        """
+        # 构建使用量统计字典
         usage = {
             self.model: {
-                "prompt_tokens": self.prompt_tokens,
-                "completion_tokens": self.completion_tokens,
+                "prompt_tokens": self.prompt_tokens,  # 当前累计的提示词token数
+                "completion_tokens": self.completion_tokens,  # 当前累计的补全token数
             }
         }
+
+        # 重置计数器，为下一轮统计做准备
         self.prompt_tokens = 0
         self.completion_tokens = 0
+
         return usage
 
     @backoff.on_exception(
-        backoff.expo,
-        ERRORS,
-        max_time=1000,
-        on_backoff=backoff_hdlr,
-        giveup=giveup_hdlr,
+        backoff.expo,  # 使用指数退避策略
+        ERRORS,  # 捕获预定义的错误类型
+        max_time=1000,  # 最大重试时间为1秒
+        on_backoff=backoff_hdlr,  # 退避时的回调处理
+        giveup=giveup_hdlr,  # 放弃重试时的回调处理
     )
     def _create_completion(self, prompt: str, **kwargs):
-        """Create a completion using the DeepSeek API."""
+        """使用DeepSeek API创建补全请求。
+
+        该方法发送HTTP POST请求到DeepSeek的聊天补全端点，
+        使用装饰器实现自动重试机制，处理临时性网络错误。
+
+        Args:
+            prompt: 用户输入的提示词文本
+            **kwargs: 其他API参数（如temperature、max_tokens等）
+
+        Returns:
+            dict: DeepSeek API返回的JSON响应
+
+        Raises:
+            requests.exceptions.HTTPError: 当HTTP请求返回错误状态码时
+        """
+        # 构建HTTP请求头，包含认证信息
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {self.api_key}",  # Bearer token认证
         }
+
+        # 构建请求体数据，符合DeepSeek API规范
         data = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            **kwargs,
+            "model": self.model,  # 指定使用的模型
+            "messages": [{"role": "user", "content": prompt}],  # 用户消息
+            **kwargs,  # 合并其他可选参数
         }
+
+        # 发送POST请求到聊天补全端点
         response = requests.post(
             f"{self.api_base}/v1/chat/completions", headers=headers, json=data
         )
+
+        # 检查响应状态，如果是错误状态码则抛出异常（触发重试）
         response.raise_for_status()
+
+        # 返回解析后的JSON响应
         return response.json()
 
     def __call__(
@@ -436,25 +551,48 @@ class DeepSeekModel(dspy.OpenAI):
         return_sorted: bool = False,
         **kwargs,
     ) -> list[dict[str, Any]]:
-        """Call the DeepSeek API to generate completions."""
-        assert only_completed, "for now"
-        assert return_sorted is False, "for now"
+        """调用DeepSeek API生成文本补全。
 
+        该方法使得类实例可以像函数一样被调用，符合DSPy框架的接口规范。
+        它处理API调用、token统计和历史记录管理。
+
+        Args:
+            prompt: 输入的提示词文本
+            only_completed: 是否只返回完整的补全结果，当前必须为True
+            return_sorted: 是否对结果排序，当前必须为False
+            **kwargs: 传递给API的其他参数
+
+        Returns:
+            list[dict[str, Any]]: 包含生成文本的列表
+
+        Raises:
+            AssertionError: 当参数设置不支持时
+        """
+        # 当前实现的限制检查
+        assert only_completed, "for now"  # 暂时只支持完整补全
+        assert return_sorted is False, "for now"  # 暂时不支持排序
+
+        # 调用底层方法发送API请求
         response = self._create_completion(prompt, **kwargs)
 
-        # Log the token usage from the DeepSeek API response.
+        # 记录本次请求的token使用量
         self.log_usage(response)
 
+        # 从API响应中提取所有候选结果
         choices = response["choices"]
+        # 提取每个候选结果的文本内容
         completions = [choice["message"]["content"] for choice in choices]
 
+        # 构建历史记录条目，用于调试和审计
         history = {
-            "prompt": prompt,
-            "response": response,
-            "kwargs": kwargs,
+            "prompt": prompt,  # 输入的提示词
+            "response": response,  # 完整的API响应
+            "kwargs": kwargs,  # 使用的参数
         }
+        # 将本次调用记录添加到历史列表
         self.history.append(history)
 
+        # 返回生成的文本列表
         return completions
 
 

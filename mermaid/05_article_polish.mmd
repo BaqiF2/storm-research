@@ -1,0 +1,47 @@
+%% 文章抛光模块时序图 - StormArticlePolishingModule.polish_article()
+sequenceDiagram
+    participant Caller as STORMWikiRunner
+    participant APM as StormArticlePolishingModule
+    participant PolishModule as PolishPageModule
+    participant LM_Gen as 文章生成LM
+    participant LM_Polish as 文章抛光LM
+    participant Article as StormArticle
+
+    Caller->>APM: polish_article(topic, draft_article, remove_duplicate)
+    
+    rect rgb(240, 248, 255)
+        Note over APM: 步骤1: 获取文章文本
+        APM->>Article: to_string()
+        Article-->>APM: article_text
+    end
+    
+    rect rgb(255, 248, 240)
+        Note over APM: 步骤2: 抛光处理
+        APM->>PolishModule: forward(topic, draft_page, polish_whole_page)
+        
+        Note over PolishModule: 2.1 生成摘要/引言
+        PolishModule->>LM_Gen: write_lead(topic, draft_page)
+        LM_Gen-->>PolishModule: lead_section
+        PolishModule->>PolishModule: 清理 lead_section
+        
+        alt polish_whole_page = true (remove_duplicate = true)
+            Note over PolishModule: 2.2 去除重复内容
+            PolishModule->>LM_Polish: polish_page(draft_page)
+            LM_Polish-->>PolishModule: polished_page
+        else polish_whole_page = false
+            PolishModule->>PolishModule: page = draft_page
+        end
+        
+        PolishModule-->>APM: (lead_section, page)
+    end
+    
+    rect rgb(240, 255, 240)
+        Note over APM: 步骤3: 组装最终文章
+        APM->>APM: polished_article = "# summary\n" + lead_section + page
+        APM->>APM: parse_article_into_dict(polished_article)
+        APM->>Article: deep_copy(draft_article)
+        APM->>Article: insert_or_create_section(article_dict)
+        APM->>Article: post_processing()
+    end
+    
+    APM-->>Caller: polished_article (StormArticle)

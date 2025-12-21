@@ -1,0 +1,76 @@
+%% 对话模拟子流程时序图 - ConvSimulator (知识策展核心)
+sequenceDiagram
+    participant KCM as StormKnowledgeCurationModule
+    participant ConvSim as ConvSimulator
+    participant WikiWriter as WikiWriter
+    participant TopicExpert as TopicExpert
+    participant QueryGen as QuestionToQuery
+    participant Retriever as Retriever
+    participant AnswerGen as AnswerQuestion
+    participant LM as 语言模型
+
+    KCM->>ConvSim: forward(topic, persona, ground_truth_url)
+    
+    loop 每轮对话 (最多 max_turn 轮)
+        rect rgb(240, 248, 255)
+            Note over ConvSim: 维基作者提问
+            ConvSim->>WikiWriter: forward(topic, persona, dlg_history)
+            
+            Note over WikiWriter: 准备对话历史
+            WikiWriter->>WikiWriter: 保留最近4轮完整内容
+            WikiWriter->>WikiWriter: 早期对话省略答案内容
+            WikiWriter->>WikiWriter: limit_word_count(conv, 2500)
+            
+            alt persona 不为空
+                WikiWriter->>LM: ask_question_with_persona(topic, persona, conv)
+            else persona 为空
+                WikiWriter->>LM: ask_question(topic, conv)
+            end
+            LM-->>WikiWriter: question
+            WikiWriter-->>ConvSim: user_utterance
+        end
+        
+        alt user_utterance 为空
+            Note over ConvSim: 记录错误并退出
+        else user_utterance = "Thank you..."
+            Note over ConvSim: 对话正常结束
+        else 继续对话
+            rect rgb(255, 248, 240)
+                Note over ConvSim: 主题专家回答
+                ConvSim->>TopicExpert: forward(topic, question, ground_truth_url)
+                
+                Note over TopicExpert: 生成搜索查询
+                TopicExpert->>QueryGen: generate_queries(topic, question)
+                QueryGen->>LM: QuestionToQuery
+                LM-->>QueryGen: queries_text
+                TopicExpert->>TopicExpert: 解析并清理查询列表
+                TopicExpert->>TopicExpert: 限制查询数量 <= max_search_queries
+                
+                Note over TopicExpert: 执行搜索
+                TopicExpert->>Retriever: retrieve(queries, exclude_urls)
+                Retriever-->>TopicExpert: searched_results
+                
+                alt 有搜索结果
+                    Note over TopicExpert: 整理信息并生成答案
+                    TopicExpert->>TopicExpert: 提取每个结果的top-1片段
+                    TopicExpert->>TopicExpert: limit_word_count(info, 1000)
+                    TopicExpert->>AnswerGen: answer_question(topic, question, info)
+                    AnswerGen->>LM: AnswerQuestion
+                    LM-->>AnswerGen: answer
+                    TopicExpert->>TopicExpert: remove_uncompleted_sentences
+                else 无搜索结果
+                    TopicExpert->>TopicExpert: answer = "Sorry, I cannot find..."
+                end
+                
+                TopicExpert-->>ConvSim: (queries, searched_results, answer)
+            end
+            
+            rect rgb(240, 255, 240)
+                Note over ConvSim: 记录对话轮次
+                ConvSim->>ConvSim: 创建 DialogueTurn
+                ConvSim->>ConvSim: dlg_history.append(dlg_turn)
+            end
+        end
+    end
+    
+    ConvSim-->>KCM: dlg_history

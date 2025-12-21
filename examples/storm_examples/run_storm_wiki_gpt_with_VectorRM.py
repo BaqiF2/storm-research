@@ -118,7 +118,7 @@ def main(args):
             QdrantVectorStoreManager.create_or_update_vector_store(
                 url=args.online_vector_db_url,
                 api_key=os.getenv("QDRANT_API_KEY"),
-                **kwargs
+                **kwargs,
             )
 
     # Setup VectorRM to retrieve information from your own data

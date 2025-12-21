@@ -1,3 +1,14 @@
+"""
+此文件定义了 STORM (Synthesis of Topic Outlines through Retrieval and Multi-perspective Question Asking) 项目的核心接口和抽象基类。
+它充当系统的骨架，规定了数据结构（如 Information, Article）和模块契约（如 KnowledgeCurationModule, ArticleGenerationModule）。
+
+主要功能包括：
+1. 定义基础数据类：用于存储检索信息、文章结构和章节内容。
+2. 定义模块接口：规范知识搜集、大纲生成、文章写作和润色的标准方法。
+3. 定义引擎和配置：提供执行引擎和语言模型配置的抽象基类。
+4. 提供 Agent 接口：为 Co-STORM 等协作场景定义 Agent 的行为规范。
+"""
+
 import concurrent.futures
 import dspy
 import functools
@@ -39,35 +50,43 @@ class InformationTable(ABC):
 
 
 class Information:
-    """Class to represent detailed information.
+    """表示详细信息的类。
 
-    Inherits from Information to include a unique identifier (URL), and extends
-    it with a description, snippets, and title of the storm information.
+    该类继承自Information，包含唯一标识符(URL)，并扩展了描述、片段和标题等属性，
+    用于存储STORM系统中的信息对象。
 
     Attributes:
-        description (str): Brief description.
-        snippets (list): List of brief excerpts or snippets.
-        title (str): The title or headline of the information.
-        url (str): The unique URL (serving as UUID) of the information.
+        url (str): 信息的唯一URL标识符
+        description (str): 简要描述
+        snippets (list): 文本片段或摘录列表
+        title (str): 信息的标题或标头
+        meta (dict): 元数据信息，如问题和查询等
+        citation_uuid (int): 引用的唯一标识符
     """
 
     def __init__(self, url, description, snippets, title, meta=None):
-        """Initialize the Information object with detailed attributes.
+        """使用详细属性初始化Information对象。
 
         Args:
-            url (str): The unique URL serving as the identifier for the information.
-            description (str): Detailed description.
-            snippets (list): List of brief excerpts or snippet.
-            title (str): The title or headline of the information.
+            url (str): 作为信息标识符的唯一URL
+            description (str): 详细描述
+            snippets (list): 文本片段或摘录列表
+            title (str): 信息的标题或标头
+            meta (dict, optional): 元数据信息，默认为None
         """
         self.description = description
         self.snippets = snippets
         self.title = title
         self.url = url
         self.meta = meta if meta is not None else {}
-        self.citation_uuid = -1
+        self.citation_uuid = -1  # 引用标识符，默认为-1
 
     def __hash__(self):
+        """计算对象的哈希值（已废弃，请使用下面的MD5哈希版本）。
+
+        Returns:
+            int: 基于URL和片段的哈希值
+        """
         return hash(
             (
                 self.url,
@@ -76,6 +95,16 @@ class Information:
         )
 
     def __eq__(self, other):
+        """判断两个Information对象是否相等。
+
+        比较URL、片段集合和元数据字符串是否都相同。
+
+        Args:
+            other: 要比较的另一个对象
+
+        Returns:
+            bool: 如果两个对象相等返回True，否则返回False
+        """
         if not isinstance(other, Information):
             return False
         return (
@@ -85,32 +114,56 @@ class Information:
         )
 
     def __hash__(self):
+        """计算对象的哈希值（基于MD5）。
+
+        使用URL、排序后的片段和元数据字符串生成MD5哈希值。
+
+        Returns:
+            int: 16进制MD5哈希值转换为整数
+        """
         return int(
             self._md5_hash((self.url, tuple(sorted(self.snippets)), self._meta_str())),
             16,
         )
 
     def _meta_str(self):
-        """Generate a string representation of relevant meta information."""
+        """生成元数据信息的字符串表示。
+
+        提取元数据中的问题和查询字段，格式化为字符串。
+
+        Returns:
+            str: 包含问题和查询的格式化字符串
+        """
         return f"Question: {self.meta.get('question', '')}, Query: {self.meta.get('query', '')}"
 
     def _md5_hash(self, value):
-        """Generate an MD5 hash for a given value."""
+        """为给定值生成MD5哈希。
+
+        将输入值转换为字符串后计算MD5哈希值。对于字典、列表、元组等复杂类型，
+        先转换为JSON字符串。
+
+        Args:
+            value: 要哈希的值，可以是任意类型
+
+        Returns:
+            str: 十六进制格式的MD5哈希值
+        """
         if isinstance(value, (dict, list, tuple)):
             value = json.dumps(value, sort_keys=True)
         return hashlib.md5(str(value).encode("utf-8")).hexdigest()
 
     @classmethod
     def from_dict(cls, info_dict):
-        """Create a Information object from a dictionary.
-           Usage: info = Information.from_dict(storm_info_dict)
+        """从字典创建Information对象。
+
+        用法示例: info = Information.from_dict(storm_info_dict)
 
         Args:
-            info_dict (dict): A dictionary containing keys 'url', 'description',
-                              'snippets', and 'title' corresponding to the object's attributes.
+            info_dict (dict): 包含'url'、'description'、'snippets'和'title'等键的字典，
+                            对应对象的属性
 
         Returns:
-            Information: An instance of Information.
+            Information: Information类的实例
         """
         info = cls(
             url=info_dict["url"],
@@ -119,10 +172,16 @@ class Information:
             title=info_dict["title"],
             meta=info_dict.get("meta", None),
         )
+        # 设置引用标识符
         info.citation_uuid = int(info_dict.get("citation_uuid", -1))
         return info
 
     def to_dict(self):
+        """将Information对象转换为字典格式。
+
+        Returns:
+            dict: 包含所有对象属性的字典
+        """
         return {
             "url": self.url,
             "description": self.description,
@@ -259,22 +318,35 @@ class Article(ABC):
 
 class Retriever:
     """
-    An abstract base class for retriever modules. It provides a template for retrieving information based on a query.
+    检索器模块的抽象基类，提供基于查询检索信息的模板。
 
-    This class should be extended to implement specific retrieval functionalities.
-    Users can design their retriever modules as needed by implementing the retrieve method.
-    The retrieval model/search engine used for each part should be declared with a suffix '_rm' in the attribute name.
+    该类应被扩展以实现特定的检索功能。
+    用户可以通过实现retrieve方法来设计自己的检索器模块。
+    每个部分使用的检索模型/搜索引擎应在属性名中使用'_rm'后缀进行声明。
     """
 
     def __init__(self, rm: dspy.Retrieve, max_thread: int = 1):
-        self.max_thread = max_thread
-        self.rm = rm
+        """初始化检索器
+
+        Args:
+            rm: DSPy检索模型实例
+            max_thread: 最大并发线程数，默认为1
+        """
+        self.max_thread = max_thread  # 最大线程数
+        self.rm = rm  # 检索模型
 
     def collect_and_reset_rm_usage(self):
+        """收集并重置检索模型的使用统计
+
+        Returns:
+            字典，键为模型名称，值为查询次数
+        """
         combined_usage = []
+        # 如果检索模型有使用统计方法，则收集统计信息
         if hasattr(getattr(self, "rm"), "get_usage_and_reset"):
             combined_usage.append(getattr(self, "rm").get_usage_and_reset())
 
+        # 合并所有模型的使用统计
         name_to_usage = {}
         for usage in combined_usage:
             for model_name, query_cnt in usage.items():
@@ -288,31 +360,53 @@ class Retriever:
     def retrieve(
         self, query: Union[str, List[str]], exclude_urls: List[str] = []
     ) -> List[Information]:
+        """检索与查询相关的信息
+
+        Args:
+            query: 单个查询字符串或查询字符串列表
+            exclude_urls: 需要排除的URL列表，默认为空列表
+
+        Returns:
+            Information对象列表，包含检索到的信息
+        """
+        # 将单个查询转换为列表格式
         queries = query if isinstance(query, list) else [query]
-        to_return = []
+        to_return = []  # 存储所有检索结果
 
         def process_query(q):
+            """处理单个查询
+
+            Args:
+                q: 查询字符串
+
+            Returns:
+                Information对象列表
+            """
+            # 使用检索模型执行查询
             retrieved_data_list = self.rm(
                 query_or_queries=[q], exclude_urls=exclude_urls
             )
             local_to_return = []
             for data in retrieved_data_list:
                 for i in range(len(data["snippets"])):
-                    # STORM generate the article with citations. We do not consider multi-hop citations.
-                    # Remove citations in the source to avoid confusion.
+                    # STORM生成带引用的文章。我们不考虑多跳引用。
+                    # 移除源文本中的引用以避免混淆。
                     data["snippets"][i] = ArticleTextProcessing.remove_citations(
                         data["snippets"][i]
                     )
+                # 将检索数据转换为Information对象
                 storm_info = Information.from_dict(data)
-                storm_info.meta["query"] = q
+                storm_info.meta["query"] = q  # 保存原始查询
                 local_to_return.append(storm_info)
             return local_to_return
 
+        # 使用线程池并发处理所有查询
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self.max_thread
         ) as executor:
             results = list(executor.map(process_query, queries))
 
+        # 合并所有查询的结果
         for result in results:
             to_return.extend(result)
 
@@ -483,24 +577,40 @@ class LMConfigs(ABC):
 
 
 class Engine(ABC):
+    """引擎基类，用于管理知识生成流程的执行和资源统计"""
+
     def __init__(self, lm_configs: LMConfigs):
+        """初始化引擎
+
+        Args:
+            lm_configs: 语言模型配置对象
+        """
         self.lm_configs = lm_configs
-        self.time = {}
-        self.lm_cost = {}  # Cost of language models measured by in/out tokens.
-        self.rm_cost = {}  # Cost of retrievers measured by number of queries.
+        self.time = {}  # 存储各个函数的执行时间
+        self.lm_cost = {}  # 语言模型的成本，通过输入/输出token数量衡量
+        self.rm_cost = {}  # 检索器的成本，通过查询次数衡量
 
     def log_execution_time_and_lm_rm_usage(self, func):
-        """Decorator to log the execution time, language model usage, and retrieval model usage of a function."""
+        """装饰器：记录函数的执行时间、语言模型使用情况和检索模型使用情况
+
+        Args:
+            func: 需要被装饰的函数
+
+        Returns:
+            装饰后的函数
+        """
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            start_time = time.time()
-            result = func(*args, **kwargs)
-            end_time = time.time()
-            execution_time = end_time - start_time
-            self.time[func.__name__] = execution_time
+            start_time = time.time()  # 记录开始时间
+            result = func(*args, **kwargs)  # 执行原函数
+            end_time = time.time()  # 记录结束时间
+            execution_time = end_time - start_time  # 计算执行时长
+            self.time[func.__name__] = execution_time  # 保存执行时间
             logger.info(f"{func.__name__} executed in {execution_time:.4f} seconds")
+            # 收集并重置语言模型的使用统计
             self.lm_cost[func.__name__] = self.lm_configs.collect_and_reset_lm_usage()
+            # 如果存在检索器，收集并重置检索模型的使用统计
             if hasattr(self, "retriever"):
                 self.rm_cost[func.__name__] = (
                     self.retriever.collect_and_reset_rm_usage()
@@ -510,53 +620,83 @@ class Engine(ABC):
         return wrapper
 
     def apply_decorators(self):
-        """Apply decorators to methods that need them."""
+        """为需要装饰的方法应用装饰器
+
+        自动查找所有以 'run_' 开头的方法，并为它们应用执行时间和资源使用统计装饰器
+        """
+        # 查找所有以 'run_' 开头的可调用方法
         methods_to_decorate = [
             method_name
             for method_name in dir(self)
             if callable(getattr(self, method_name)) and method_name.startswith("run_")
         ]
+        # 为每个方法应用装饰器
         for method_name in methods_to_decorate:
-            original_method = getattr(self, method_name)
-            decorated_method = self.log_execution_time_and_lm_rm_usage(original_method)
-            setattr(self, method_name, decorated_method)
+            original_method = getattr(self, method_name)  # 获取原始方法
+            decorated_method = self.log_execution_time_and_lm_rm_usage(
+                original_method
+            )  # 应用装饰器
+            setattr(self, method_name, decorated_method)  # 替换为装饰后的方法
 
     @abstractmethod
     def run_knowledge_curation_module(self, **kwargs) -> Optional[InformationTable]:
+        """运行知识整理模块（抽象方法，需在子类中实现）
+
+        Returns:
+            信息表对象，如果不适用则返回None
+        """
         pass
 
     @abstractmethod
     def run_outline_generation_module(self, **kwarg) -> Article:
+        """运行大纲生成模块（抽象方法，需在子类中实现）
+
+        Returns:
+            包含大纲的文章对象
+        """
         pass
 
     @abstractmethod
     def run_article_generation_module(self, **kwarg) -> Article:
+        """运行文章生成模块（抽象方法，需在子类中实现）
+
+        Returns:
+            生成的文章对象
+        """
         pass
 
     @abstractmethod
     def run_article_polishing_module(self, **kwarg) -> Article:
+        """运行文章润色模块（抽象方法，需在子类中实现）
+
+        Returns:
+            润色后的文章对象
+        """
         pass
 
     @abstractmethod
     def run(self, **kwargs):
+        """运行完整的处理流程（抽象方法，需在子类中实现）"""
         pass
 
     def summary(self):
-        print("***** Execution time *****")
+        """打印执行摘要，包括执行时间、语言模型token使用量和检索模型查询次数"""
+        print("***** 执行时间 *****")
         for k, v in self.time.items():
-            print(f"{k}: {v:.4f} seconds")
+            print(f"{k}: {v:.4f} 秒")
 
-        print("***** Token usage of language models: *****")
+        print("***** 语言模型Token使用量: *****")
         for k, v in self.lm_cost.items():
             print(f"{k}")
             for model_name, tokens in v.items():
                 print(f"    {model_name}: {tokens}")
 
-        print("***** Number of queries of retrieval models: *****")
+        print("***** 检索模型查询次数: *****")
         for k, v in self.rm_cost.items():
             print(f"{k}: {v}")
 
     def reset(self):
+        """重置所有统计信息（执行时间、语言模型成本、检索模型成本）"""
         self.time = {}
         self.lm_cost = {}
         self.rm_cost = {}

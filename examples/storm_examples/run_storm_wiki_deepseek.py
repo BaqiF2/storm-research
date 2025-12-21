@@ -1,20 +1,20 @@
 """
-STORM Wiki pipeline powered by DeepSeek models and You.com or Bing search engine.
-You need to set up the following environment variables to run this script:
-    - DEEPSEEK_API_KEY: DeepSeek API key
-    - DEEPSEEK_API_BASE: DeepSeek API base URL (default is https://api.deepseek.com)
-    - YDC_API_KEY: You.com API key; BING_SEARCH_API_KEY: Bing Search API key, SERPER_API_KEY: Serper API key, BRAVE_API_KEY: Brave API key, or TAVILY_API_KEY: Tavily API key
+基于 DeepSeek 模型和 You.com 或 Bing 搜索引擎的 STORM Wiki 流程。
+运行此脚本需要设置以下环境变量：
+    - DEEPSEEK_API_KEY: DeepSeek API 密钥
+    - DEEPSEEK_API_BASE: DeepSeek API 基础 URL（默认为 https://api.deepseek.com）
+    - YDC_API_KEY: You.com API 密钥；BING_SEARCH_API_KEY: Bing 搜索 API 密钥，SERPER_API_KEY: Serper API 密钥，BRAVE_API_KEY: Brave API 密钥，或 TAVILY_API_KEY: Tavily API 密钥
 
-Output will be structured as below
+输出结构如下：
 args.output_dir/
-    topic_name/  # topic_name will follow convention of underscore-connected topic name w/o space and slash
-        conversation_log.json           # Log of information-seeking conversation
-        raw_search_results.json         # Raw search results from search engine
-        direct_gen_outline.txt          # Outline directly generated with LLM's parametric knowledge
-        storm_gen_outline.txt           # Outline refined with collected information
-        url_to_info.json                # Sources that are used in the final article
-        storm_gen_article.txt           # Final article generated
-        storm_gen_article_polished.txt  # Polished final article (if args.do_polish_article is True)
+    topic_name/  # 主题名称遵循下划线连接的命名规范，不包含空格和斜杠
+        conversation_log.json           # 信息搜集对话日志
+        raw_search_results.json         # 搜索引擎的原始搜索结果
+        direct_gen_outline.txt          # 直接使用 LLM 参数化知识生成的大纲
+        storm_gen_outline.txt           # 使用收集的信息优化后的大纲
+        url_to_info.json                # 最终文章中使用的信息源
+        storm_gen_article.txt           # 生成的最终文章
+        storm_gen_article_polished.txt  # 润色后的最终文章（如果 args.do_polish_article 为 True）
 """
 
 import os
@@ -42,16 +42,16 @@ from knowledge_storm.utils import load_api_key
 
 def sanitize_topic(topic):
     """
-    Sanitize the topic name for use in file names.
-    Remove or replace characters that are not allowed in file names.
+    清理主题名称以便用于文件名。
+    删除或替换文件名中不允许的字符。
     """
-    # Replace spaces with underscores
+    # 将空格替换为下划线
     topic = topic.replace(" ", "_")
 
-    # Remove any character that isn't alphanumeric, underscore, or hyphen
+    # 删除任何非字母数字、下划线或连字符的字符
     topic = re.sub(r"[^a-zA-Z0-9_-]", "", topic)
 
-    # Ensure the topic isn't empty after sanitization
+    # 确保清理后主题名称不为空
     if not topic:
         topic = "unnamed_topic"
 
@@ -59,17 +59,29 @@ def sanitize_topic(topic):
 
 
 def main(args):
-    load_api_key(toml_file_path="secrets.toml")
+    # 从 secrets.toml 文件加载 API 密钥
+    # 检查 secrets.toml 文件是否存在
+    toml_file_path = "secrets.toml"
+    if not os.path.exists(toml_file_path):
+        # 如果当前目录没有找到，则尝试在项目根目录查找
+        toml_file_path = os.path.join(
+            os.path.dirname(__file__), "..", "..", "secrets.toml"
+        )
+        toml_file_path = os.path.abspath(toml_file_path)
+
+    # 加载API密钥到环境变量中
+    load_api_key(toml_file_path=toml_file_path)
     lm_configs = STORMWikiLMConfigs()
 
     logger = logging.getLogger(__name__)
 
-    # Ensure DEEPSEEK_API_KEY is set
+    # 确保 DEEPSEEK_API_KEY 已设置
     if not os.getenv("DEEPSEEK_API_KEY"):
         raise ValueError(
-            "DEEPSEEK_API_KEY environment variable is not set. Please set it in your secrets.toml file."
+            "未设置 DEEPSEEK_API_KEY 环境变量。请在 secrets.toml 文件中设置它。"
         )
 
+    # 配置 DeepSeek 模型的通用参数
     deepseek_kwargs = {
         "api_key": os.getenv("DEEPSEEK_API_KEY"),
         "api_base": os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com"),
@@ -77,36 +89,45 @@ def main(args):
         "top_p": args.top_p,
     }
 
-    # DeepSeek offers two main models: 'deepseek-chat' for general tasks and 'deepseek-coder' for coding tasks
-    # Users can choose the appropriate model based on their needs
+    # 对话模拟器语言模型：用于模拟专家与用户的对话
     conv_simulator_lm = DeepSeekModel(
         model=args.model, max_tokens=500, **deepseek_kwargs
     )
+
+    # 问题生成语言模型：用于生成信息搜集问题
     question_asker_lm = DeepSeekModel(
         model=args.model, max_tokens=500, **deepseek_kwargs
     )
+
+    # 大纲生成语言模型：用于生成文章大纲
     outline_gen_lm = DeepSeekModel(model=args.model, max_tokens=400, **deepseek_kwargs)
+
+    # 文章生成语言模型：用于生成文章内容
     article_gen_lm = DeepSeekModel(model=args.model, max_tokens=700, **deepseek_kwargs)
+
+    # 文章润色语言模型：用于润色和完善文章
     article_polish_lm = DeepSeekModel(
         model=args.model, max_tokens=4000, **deepseek_kwargs
     )
 
+    # 配置 STORM 流程中各个阶段使用的语言模型
     lm_configs.set_conv_simulator_lm(conv_simulator_lm)
     lm_configs.set_question_asker_lm(question_asker_lm)
     lm_configs.set_outline_gen_lm(outline_gen_lm)
     lm_configs.set_article_gen_lm(article_gen_lm)
     lm_configs.set_article_polish_lm(article_polish_lm)
 
+    # 配置 STORM Wiki 运行器的参数
     engine_args = STORMWikiRunnerArguments(
-        output_dir=args.output_dir,
-        max_conv_turn=args.max_conv_turn,
-        max_perspective=args.max_perspective,
-        search_top_k=args.search_top_k,
-        max_thread_num=args.max_thread_num,
+        output_dir=args.output_dir,  # 输出路径
+        max_conv_turn=args.max_conv_turn,  # 最大对话轮数（深度）
+        max_perspective=args.max_perspective,  # 最大视角数 （宽度）
+        search_top_k=args.search_top_k,  # 搜索结果数量   （搜索页面数量）
+        max_thread_num=args.max_thread_num,  # 最大线程数 （并行展开数量）
     )
 
-    # STORM is a knowledge curation system which consumes information from the retrieval module.
-    # Currently, the information source is the Internet and we use search engine API as the retrieval module.
+    # 根据用户选择的检索器类型初始化相应的检索模块
+    rm = None
     match args.retriever:
         case "bing":
             rm = BingSearch(
@@ -141,118 +162,123 @@ def main(args):
             )
         case _:
             raise ValueError(
-                f'Invalid retriever: {args.retriever}. Choose either "bing", "you", "brave", "duckduckgo", "serper", "tavily", or "searxng"'
+                f'无效的检索器: {args.retriever}。请选择 "bing"、"you"、"brave"、"duckduckgo"、"serper"、"tavily" 或 "searxng"'
             )
 
+    # 初始化 STORM Wiki 运行器
     runner = STORMWikiRunner(engine_args, lm_configs, rm)
 
-    topic = input("Topic: ")
+    # 获取用户输入的主题
+    topic = input("主题: ")
+    # 清理主题名称，确保可以用作文件名
     sanitized_topic = sanitize_topic(topic)
 
     try:
+        # 运行 STORM 流程，包括研究、大纲生成、文章生成和润色等阶段
         runner.run(
             topic=sanitized_topic,
-            do_research=args.do_research,
-            do_generate_outline=args.do_generate_outline,
-            do_generate_article=args.do_generate_article,
-            do_polish_article=args.do_polish_article,
-            remove_duplicate=args.remove_duplicate,
+            do_research=args.do_research,  # 模拟对话来研究主题
+            do_generate_outline=args.do_generate_outline,  # 为主题生成大纲
+            do_generate_article=args.do_generate_article,  # 为主题生成文章
+            do_polish_article=args.do_polish_article,  # 润色文章
+            remove_duplicate=args.remove_duplicate,  # 从文章中删除重复内容
         )
+        # 运行后处理
         runner.post_run()
+        # 输出运行摘要
         runner.summary()
     except Exception as e:
-        logger.exception(f"An error occurred: {str(e)}")
+        logger.exception(f"发生错误: {str(e)}")
         raise
 
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    # global arguments
+    # 全局参数
     parser.add_argument(
         "--output-dir",
         type=str,
         default="./results/deepseek",
-        help="Directory to store the outputs.",
+        help="存储输出结果的目录。",
     )
     parser.add_argument(
         "--max-thread-num",
         type=int,
         default=3,
-        help="Maximum number of threads to use. The information seeking part and the article generation"
-        "part can speed up by using multiple threads. Consider reducing it if keep getting "
-        '"Exceed rate limit" error when calling LM API.',
+        help="使用的最大线程数。信息搜集和文章生成部分可以通过多线程加速。"
+        "如果频繁遇到调用 LM API 时的'超出速率限制'错误，请考虑减少此值。",
     )
     parser.add_argument(
         "--retriever",
         type=str,
-        choices=["bing", "you", "brave", "serper", "duckduckgo", "tavily", "searxng"],
-        help="The search engine API to use for retrieving information.",
+        choices=["bing", "you", "duckduckgo", "tavily"],
+        default="tavily",  # 添加默认值
+        help="用于检索信息的搜索引擎 API。",
     )
     parser.add_argument(
         "--model",
         type=str,
-        choices=["deepseek-chat", "deepseek-coder"],
+        choices=["deepseek-chat"],
         default="deepseek-chat",
-        help='DeepSeek model to use. "deepseek-chat" for general tasks, "deepseek-coder" for coding tasks.',
+        help='使用的 DeepSeek 模型。"deepseek-chat" 用于常规任务',
     )
-    parser.add_argument(
-        "--temperature", type=float, default=1.0, help="Sampling temperature to use."
-    )
-    parser.add_argument(
-        "--top_p", type=float, default=0.9, help="Top-p sampling parameter."
-    )
-    # stage of the pipeline
+    parser.add_argument("--temperature", type=float, default=1.0, help="采样温度参数。")
+    parser.add_argument("--top_p", type=float, default=0.9, help="Top-p 采样参数。")
+    # 流程阶段控制参数
     parser.add_argument(
         "--do-research",
         action="store_true",
-        help="If True, simulate conversation to research the topic; otherwise, load the results.",
+        default=True,  # 添加默认值
+        help="如果为 True，模拟对话来研究主题；否则，加载已有结果。",
     )
     parser.add_argument(
         "--do-generate-outline",
         action="store_true",
-        help="If True, generate an outline for the topic; otherwise, load the results.",
+        default=True,  # 添加默认值
+        help="如果为 True，为主题生成大纲；否则，加载已有结果。",
     )
     parser.add_argument(
         "--do-generate-article",
         action="store_true",
-        help="If True, generate an article for the topic; otherwise, load the results.",
+        default=True,  # 添加默认值
+        help="如果为 True，为主题生成文章；否则，加载已有结果。",
     )
     parser.add_argument(
         "--do-polish-article",
         action="store_true",
-        help="If True, polish the article by adding a summarization section and (optionally) removing "
-        "duplicate content.",
+        default=True,  # 添加默认值
+        help="如果为 True，通过添加摘要部分和（可选的）删除重复内容来润色文章。",
     )
-    # hyperparameters for the pre-writing stage
+    # 预写作阶段的超参数
     parser.add_argument(
         "--max-conv-turn",
         type=int,
         default=3,
-        help="Maximum number of questions in conversational question asking.",
+        help="对话式提问中的最大问题数量。",
     )
     parser.add_argument(
         "--max-perspective",
         type=int,
         default=3,
-        help="Maximum number of perspectives to consider in perspective-guided question asking.",
+        help="视角引导式提问中要考虑的最大视角数量。",
     )
     parser.add_argument(
         "--search-top-k",
         type=int,
         default=3,
-        help="Top k search results to consider for each search query.",
+        help="每个搜索查询要考虑的前 k 个搜索结果。",
     )
-    # hyperparameters for the writing stage
+    # 写作阶段的超参数
     parser.add_argument(
         "--retrieve-top-k",
         type=int,
         default=3,
-        help="Top k collected references for each section title.",
+        help="每个章节标题收集的前 k 个参考文献。",
     )
     parser.add_argument(
         "--remove-duplicate",
         action="store_true",
-        help="If True, remove duplicate content from the article.",
+        help="如果为 True，从文章中删除重复内容。",
     )
 
     main(parser.parse_args())

@@ -1,0 +1,69 @@
+%% 知识策展模块时序图 - StormKnowledgeCurationModule.research()
+sequenceDiagram
+    participant Caller as STORMWikiRunner
+    participant KCM as StormKnowledgeCurationModule
+    participant PersonaGen as StormPersonaGenerator
+    participant ConvSim as ConvSimulator
+    participant WikiWriter as WikiWriter
+    participant TopicExpert as TopicExpert
+    participant Retriever as Retriever
+    participant LM as 语言模型
+    participant Callback as CallbackHandler
+
+    Caller->>KCM: research(topic, ground_truth_url, max_perspective)
+    
+    rect rgb(240, 248, 255)
+        Note over KCM: 步骤1: 生成多视角角色
+        KCM->>Callback: on_identify_perspective_start()
+        alt disable_perspective = false
+            KCM->>PersonaGen: generate_persona(topic, max_num_persona)
+            PersonaGen->>LM: 调用LM生成角色
+            LM-->>PersonaGen: 角色列表
+            PersonaGen-->>KCM: considered_personas
+        else disable_perspective = true
+            KCM->>KCM: considered_personas = [""]
+        end
+        KCM->>Callback: on_identify_perspective_end(perspectives)
+    end
+    
+    rect rgb(255, 248, 240)
+        Note over KCM: 步骤2: 并发运行多角色对话
+        KCM->>Callback: on_information_gathering_start()
+        
+        loop 对每个 persona (并发执行)
+            KCM->>ConvSim: forward(topic, persona, ground_truth_url)
+            
+            loop 最多 max_turn 轮对话
+                ConvSim->>WikiWriter: forward(topic, persona, dlg_history)
+                WikiWriter->>LM: ask_question_with_persona()
+                LM-->>WikiWriter: question
+                WikiWriter-->>ConvSim: user_utterance
+                
+                alt user_utterance 为空或表示结束
+                    Note over ConvSim: 对话结束
+                else 继续对话
+                    ConvSim->>TopicExpert: forward(topic, question, ground_truth_url)
+                    TopicExpert->>LM: generate_queries(topic, question)
+                    LM-->>TopicExpert: queries
+                    TopicExpert->>Retriever: retrieve(queries, exclude_urls)
+                    Retriever-->>TopicExpert: searched_results
+                    TopicExpert->>LM: answer_question(topic, question, info)
+                    LM-->>TopicExpert: answer
+                    TopicExpert-->>ConvSim: (queries, searched_results, answer)
+                end
+                
+                ConvSim->>ConvSim: dlg_history.append(DialogueTurn)
+                ConvSim->>Callback: on_dialogue_turn_end(dlg_turn)
+            end
+            
+            ConvSim-->>KCM: dlg_history
+        end
+    end
+    
+    rect rgb(240, 255, 240)
+        Note over KCM: 步骤3: 构建信息表
+        KCM->>KCM: information_table = StormInformationTable(conversations)
+        KCM->>Callback: on_information_gathering_end()
+    end
+    
+    KCM-->>Caller: information_table, conversation_log

@@ -16,5 +16,6 @@ dependencies = [
     "langchain-qdrant",
     "numpy",
     "litellm",
-    "diskcache"
+    "diskcache",
+    "pre-commit>=4.5.1",
 ]

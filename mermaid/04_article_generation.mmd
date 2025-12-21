@@ -1,0 +1,62 @@
+%% 文章生成模块时序图 - StormArticleGenerationModule.generate_article()
+sequenceDiagram
+    participant Caller as STORMWikiRunner
+    participant AGM as StormArticleGenerationModule
+    participant InfoTable as StormInformationTable
+    participant ConvToSection as ConvToSection
+    participant LM as 语言模型
+    participant Article as StormArticle
+
+    Caller->>AGM: generate_article(topic, information_table, article_with_outline)
+    
+    rect rgb(240, 248, 255)
+        Note over AGM: 步骤1: 准备检索
+        AGM->>InfoTable: prepare_table_for_retrieval()
+        InfoTable-->>AGM: 检索索引就绪
+    end
+    
+    rect rgb(255, 248, 240)
+        Note over AGM: 步骤2: 获取待写章节
+        AGM->>Article: get_first_level_section_names()
+        Article-->>AGM: sections_to_write
+    end
+    
+    rect rgb(240, 255, 240)
+        Note over AGM: 步骤3: 并发生成各章节内容
+        
+        par 并发执行 (ThreadPoolExecutor)
+            loop 对每个 section_title (排除introduction/conclusion)
+                AGM->>Article: get_outline_as_list(section_title)
+                Article-->>AGM: section_query, section_outline
+                
+                AGM->>AGM: generate_section(topic, section_name, ...)
+                
+                Note over AGM: 3.1 检索相关信息
+                AGM->>InfoTable: retrieve_information(section_query, search_top_k)
+                InfoTable-->>AGM: collected_info
+                
+                Note over AGM: 3.2 生成章节内容
+                AGM->>ConvToSection: forward(topic, outline, section, collected_info)
+                ConvToSection->>ConvToSection: 格式化收集到的信息
+                ConvToSection->>LM: write_section(topic, info, section)
+                LM-->>ConvToSection: section_content
+                ConvToSection->>ConvToSection: clean_up_section(section_content)
+                ConvToSection-->>AGM: section_content
+                
+                AGM-->>AGM: section_output_dict
+            end
+        end
+    end
+    
+    rect rgb(255, 240, 255)
+        Note over AGM: 步骤4: 组装文章
+        AGM->>Article: deep_copy(article_with_outline)
+        
+        loop 对每个 section_output_dict
+            AGM->>Article: update_section(parent, content, info_list)
+        end
+        
+        AGM->>Article: post_processing()
+    end
+    
+    AGM-->>Caller: article (StormArticle)

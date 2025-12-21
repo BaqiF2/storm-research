@@ -1,0 +1,68 @@
+%% STORM 主流程时序图 - STORMWikiRunner.run()
+sequenceDiagram
+    participant User as 用户
+    participant Runner as STORMWikiRunner
+    participant KnowledgeCuration as StormKnowledgeCurationModule
+    participant OutlineGen as StormOutlineGenerationModule
+    participant ArticleGen as StormArticleGenerationModule
+    participant ArticlePolish as StormArticlePolishingModule
+    participant FileIO as FileIOHelper
+
+    User->>Runner: run(topic, do_research, do_generate_outline, ...)
+    
+    Note over Runner: 初始化输出目录
+    Runner->>Runner: article_output_dir = output_dir/topic_name
+    
+    rect rgb(240, 248, 255)
+        Note over Runner: 阶段1: 知识策展
+        alt do_research = true
+            Runner->>KnowledgeCuration: research(topic, ground_truth_url, callback_handler)
+            KnowledgeCuration-->>Runner: information_table, conversation_log
+            Runner->>FileIO: dump_json(conversation_log)
+            Runner->>FileIO: dump_url_to_info(raw_search_results.json)
+        else do_research = false
+            Runner->>FileIO: load_json(conversation_log.json)
+            FileIO-->>Runner: information_table
+        end
+    end
+    
+    rect rgb(255, 248, 240)
+        Note over Runner: 阶段2: 大纲生成
+        alt do_generate_outline = true
+            Runner->>OutlineGen: generate_outline(topic, information_table)
+            OutlineGen-->>Runner: outline, draft_outline
+            Runner->>FileIO: dump_outline(storm_gen_outline.txt)
+            Runner->>FileIO: dump_outline(direct_gen_outline.txt)
+        else do_generate_outline = false
+            Runner->>FileIO: load_str(storm_gen_outline.txt)
+            FileIO-->>Runner: outline
+        end
+    end
+    
+    rect rgb(240, 255, 240)
+        Note over Runner: 阶段3: 文章生成
+        alt do_generate_article = true
+            Runner->>ArticleGen: generate_article(topic, information_table, outline)
+            ArticleGen-->>Runner: draft_article
+            Runner->>FileIO: dump_article(storm_gen_article.txt)
+            Runner->>FileIO: dump_reference(url_to_info.json)
+        else do_generate_article = false
+            Runner->>FileIO: load_str(storm_gen_article.txt)
+            Runner->>FileIO: load_json(url_to_info.json)
+            FileIO-->>Runner: draft_article
+        end
+    end
+    
+    rect rgb(255, 240, 255)
+        Note over Runner: 阶段4: 文章抛光
+        alt do_polish_article = true
+            Runner->>ArticlePolish: polish_article(topic, draft_article, remove_duplicate)
+            ArticlePolish-->>Runner: polished_article
+            Runner->>FileIO: write_str(storm_gen_article_polished.txt)
+        end
+    end
+    
+    Runner->>Runner: post_run()
+    Runner->>FileIO: dump_json(run_config.json)
+    Runner->>FileIO: write(llm_call_history.jsonl)
+    Runner-->>User: 完成

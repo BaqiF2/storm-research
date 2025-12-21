@@ -12,6 +12,18 @@ from ...utils import ArticleTextProcessing, FileIOHelper
 
 
 class DialogueTurn:
+    """对话轮次类，表示一次完整的对话交互。
+
+    该类封装了一次对话轮次中的所有信息，包括代理的回复、用户的输入、
+    搜索查询以及搜索结果。主要用于在知识整理阶段记录和存储对话历史。
+
+    Attributes:
+        agent_utterance: 代理的回复内容
+        user_utterance: 用户的输入内容
+        search_queries: 执行的搜索查询列表
+        search_results: 搜索结果列表，每个元素为Information对象
+    """
+
     def __init__(
         self,
         agent_utterance: str = None,
@@ -19,11 +31,20 @@ class DialogueTurn:
         search_queries: Optional[List[str]] = None,
         search_results: Optional[List[Union[Information, Dict]]] = None,
     ):
+        """初始化对话轮次。
+
+        Args:
+            agent_utterance: 代理的回复内容，可选
+            user_utterance: 用户的输入内容，可选
+            search_queries: 执行的搜索查询列表，可选
+            search_results: 搜索结果列表，可以是Information对象或字典格式，可选
+        """
         self.agent_utterance = agent_utterance
         self.user_utterance = user_utterance
         self.search_queries = search_queries
         self.search_results = search_results
 
+        # 将字典格式的搜索结果转换为Information对象
         if self.search_results:
             for idx in range(len(self.search_results)):
                 if type(self.search_results[idx]) == dict:
@@ -32,8 +53,14 @@ class DialogueTurn:
                     )
 
     def log(self):
-        """
-        Returns a json object that contains all information inside `self`
+        """生成包含对话轮次所有信息的日志对象。
+
+        将对话轮次中的所有信息转换为有序字典格式，便于序列化和存储。
+        搜索结果会被转换为字典格式。
+
+        Returns:
+            OrderedDict: 包含agent_utterance、user_utterance、search_queries
+                        和search_results的有序字典
         """
         return OrderedDict(
             {
@@ -47,15 +74,23 @@ class DialogueTurn:
 
 class StormInformationTable(InformationTable):
     """
-    The InformationTable class serves as data class to store the information
-    collected during KnowledgeCuration stage.
+    信息表类，用于存储知识整理(KnowledgeCuration)阶段收集的信息。
 
-    Create subclass to incorporate more information as needed. For example,
-    in STORM paper https://arxiv.org/pdf/2402.14207.pdf, additional information
-    would be perspective guided dialogue history.
+    可以根据需要创建子类以包含更多信息。例如，在 STORM 论文
+    https://arxiv.org/pdf/2402.14207.pdf 中，额外的信息可能包括
+    视角引导的对话历史。
+
+    Attributes:
+        conversations: 对话列表，每个元素为(角色, 对话轮次列表)的元组
+        url_to_info: URL到信息对象的映射字典
     """
 
     def __init__(self, conversations=List[Tuple[str, List[DialogueTurn]]]):
+        """初始化信息表。
+
+        Args:
+            conversations: 对话列表，格式为[(角色名, [对话轮次])]
+        """
         super().__init__()
         self.conversations = conversations
         self.url_to_info: Dict[str, Information] = (
@@ -66,15 +101,30 @@ class StormInformationTable(InformationTable):
     def construct_url_to_info(
         conversations: List[Tuple[str, List[DialogueTurn]]]
     ) -> Dict[str, Information]:
+        """从对话中构建URL到信息对象的映射。
+
+        遍历所有对话轮次，提取搜索结果中的信息，按URL聚合相同来源的片段，
+        并去除重复的片段。
+
+        Args:
+            conversations: 对话列表，格式为[(角色名, [对话轮次])]
+
+        Returns:
+            Dict[str, Information]: URL到信息对象的映射字典
+        """
         url_to_info = {}
 
+        # 遍历所有对话，提取搜索结果信息
         for persona, conv in conversations:
             for turn in conv:
                 for storm_info in turn.search_results:
                     if storm_info.url in url_to_info:
+                        # URL已存在，追加新片段
                         url_to_info[storm_info.url].snippets.extend(storm_info.snippets)
                     else:
+                        # 新URL，创建新条目
                         url_to_info[storm_info.url] = storm_info
+        # 去除每个URL下的重复片段
         for url in url_to_info:
             url_to_info[url].snippets = list(set(url_to_info[url].snippets))
         return url_to_info
@@ -83,6 +133,14 @@ class StormInformationTable(InformationTable):
     def construct_log_dict(
         conversations: List[Tuple[str, List[DialogueTurn]]]
     ) -> List[Dict[str, Union[str, Any]]]:
+        """将对话转换为日志字典格式。
+
+        Args:
+            conversations: 对话列表，格式为[(角色名, [对话轮次])]
+
+        Returns:
+            List[Dict]: 对话日志列表，每个元素包含perspective和dlg_turns字段
+        """
         conversation_log = []
         for persona, conv in conversations:
             conversation_log.append(
@@ -91,52 +149,94 @@ class StormInformationTable(InformationTable):
         return conversation_log
 
     def dump_url_to_info(self, path):
+        """将URL到信息的映射导出为JSON文件。
+
+        Args:
+            path: 输出文件路径
+        """
         url_to_info = copy.deepcopy(self.url_to_info)
+        # 将信息对象转换为字典格式
         for url in url_to_info:
             url_to_info[url] = url_to_info[url].to_dict()
         FileIOHelper.dump_json(url_to_info, path)
 
     @classmethod
     def from_conversation_log_file(cls, path):
+        """从对话日志文件加载信息表。
+
+        Args:
+            path: 对话日志文件路径
+
+        Returns:
+            StormInformationTable: 从日志重建的信息表实例
+        """
         conversation_log_data = FileIOHelper.load_json(path)
         conversations = []
         for item in conversation_log_data:
+            # 重建对话轮次
             dialogue_turns = [DialogueTurn(**turn) for turn in item["dlg_turns"]]
             persona = item["perspective"]
             conversations.append((persona, dialogue_turns))
         return cls(conversations)
 
     def prepare_table_for_retrieval(self):
+        """准备信息表用于检索。
+
+        初始化句子编码器，收集所有URL和文本片段，并对片段进行编码。
+        编码后的片段将用于后续的相似度检索。
+        """
+        # 初始化句子编码器
         self.encoder = SentenceTransformer("paraphrase-MiniLM-L6-v2")
         self.collected_urls = []
         self.collected_snippets = []
+        # 收集所有URL和对应的文本片段
         for url, information in self.url_to_info.items():
             for snippet in information.snippets:
                 self.collected_urls.append(url)
                 self.collected_snippets.append(snippet)
+        # 对所有片段进行编码
         self.encoded_snippets = self.encoder.encode(self.collected_snippets)
 
     def retrieve_information(
         self, queries: Union[List[str], str], search_top_k
     ) -> List[Information]:
+        """根据查询检索相关信息。
+
+        使用余弦相似度计算查询与文本片段的相似度，返回最相关的信息。
+
+        Args:
+            queries: 查询字符串或查询列表
+            search_top_k: 每个查询返回的top-k片段数量
+
+        Returns:
+            List[Information]: 检索到的信息对象列表
+        """
         selected_urls = []
         selected_snippets = []
+        # 确保queries是列表格式
         if type(queries) is str:
             queries = [queries]
+        # 对每个查询进行检索
         for query in queries:
+            # 编码查询
             encoded_query = self.encoder.encode(query)
+            # 计算余弦相似度
             sim = cosine_similarity([encoded_query], self.encoded_snippets)[0]
+            # 按相似度排序
             sorted_indices = np.argsort(sim)
+            # 选择top-k最相似的片段
             for i in sorted_indices[-search_top_k:][::-1]:
                 selected_urls.append(self.collected_urls[i])
                 selected_snippets.append(self.collected_snippets[i])
 
+        # 按URL聚合选中的片段
         url_to_snippets = {}
         for url, snippet in zip(selected_urls, selected_snippets):
             if url not in url_to_snippets:
                 url_to_snippets[url] = set()
             url_to_snippets[url].add(snippet)
 
+        # 构建返回的信息对象
         selected_url_to_info = {}
         for url in url_to_snippets:
             selected_url_to_info[url] = copy.deepcopy(self.url_to_info[url])

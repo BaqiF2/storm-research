@@ -648,7 +648,19 @@ class WebPageHelper:
             snippet_chunk_size: Maximum character count for each snippet.
             max_thread_num: Maximum number of threads to use for concurrent requests (e.g., downloading webpages).
         """
-        self.httpx_client = httpx.Client(verify=False)
+        http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+        https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+
+        # httpx uses 'mounts' for proxy configuration
+        mounts = {}
+        if http_proxy:
+            mounts["http://"] = httpx.HTTPTransport(proxy=http_proxy)
+        if https_proxy:
+            mounts["https://"] = httpx.HTTPTransport(proxy=https_proxy)
+
+        self.httpx_client = httpx.Client(
+            verify=False, mounts=mounts if mounts else None
+        )
         self.min_char_count = min_char_count
         self.max_thread_num = max_thread_num
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -673,7 +685,7 @@ class WebPageHelper:
 
     def download_webpage(self, url: str):
         try:
-            res = self.httpx_client.get(url, timeout=4)
+            res = self.httpx_client.get(url, timeout=10)
             if res.status_code >= 400:
                 res.raise_for_status()
             return res.content

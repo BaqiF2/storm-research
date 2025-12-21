@@ -1,0 +1,50 @@
+%% 大纲生成模块时序图 - StormOutlineGenerationModule.generate_outline()
+sequenceDiagram
+    participant Caller as STORMWikiRunner
+    participant OGM as StormOutlineGenerationModule
+    participant WriteOutline as WriteOutline
+    participant LM as 语言模型
+    participant Callback as CallbackHandler
+    participant Article as StormArticle
+
+    Caller->>OGM: generate_outline(topic, information_table, return_draft_outline)
+    
+    OGM->>Callback: on_information_organization_start()
+    
+    rect rgb(240, 248, 255)
+        Note over OGM: 步骤1: 合并对话历史
+        OGM->>OGM: concatenated_dialogue_turns = 合并所有对话轮次
+    end
+    
+    rect rgb(255, 248, 240)
+        Note over OGM: 步骤2: 生成大纲
+        OGM->>WriteOutline: forward(topic, dlg_history)
+        
+        Note over WriteOutline: 2.1 清理对话历史
+        WriteOutline->>WriteOutline: 过滤无关对话轮次
+        WriteOutline->>WriteOutline: 移除引用, 限制词数
+        
+        Note over WriteOutline: 2.2 生成草稿大纲
+        WriteOutline->>LM: draft_page_outline(topic)
+        LM-->>WriteOutline: old_outline
+        WriteOutline->>WriteOutline: clean_up_outline(old_outline)
+        WriteOutline->>Callback: on_direct_outline_generation_end(outline)
+        
+        Note over WriteOutline: 2.3 基于对话优化大纲
+        WriteOutline->>LM: write_page_outline(topic, old_outline, conv)
+        LM-->>WriteOutline: refined_outline
+        WriteOutline->>WriteOutline: clean_up_outline(refined_outline)
+        WriteOutline->>Callback: on_outline_refinement_end(outline)
+        
+        WriteOutline-->>OGM: (outline, old_outline)
+    end
+    
+    rect rgb(240, 255, 240)
+        Note over OGM: 步骤3: 构建文章对象
+        OGM->>Article: from_outline_str(topic, outline)
+        Article-->>OGM: article_with_outline_only
+        OGM->>Article: from_outline_str(topic, old_outline)
+        Article-->>OGM: article_with_draft_outline_only
+    end
+    
+    OGM-->>Caller: (article_with_outline, article_with_draft_outline)
