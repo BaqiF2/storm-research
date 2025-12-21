@@ -302,18 +302,18 @@ class ArticleTextProcessing:
     @staticmethod
     def limit_word_count_preserve_newline(input_string, max_word_count):
         """
-        Limit the word count of an input string to a specified maximum, while preserving the integrity of complete lines.
+        将输入字符串的词数限制为指定的最大值，同时保持完整行的完整性。
 
-        The function truncates the input string at the nearest word that does not exceed the maximum word count,
-        ensuring that no partial lines are included in the output. Words are defined as text separated by spaces,
-        and lines are defined as text separated by newline characters.
+        该函数在不超过最大词数的最近位置截断输入字符串，
+        确保输出中不包含部分行。词被定义为用空格分隔的文本，
+        行被定义为用换行符分隔的文本。
 
-        Args:
-            input_string (str): The string to be truncated. This string may contain multiple lines.
-            max_word_count (int): The maximum number of words allowed in the truncated string.
+        参数:
+            input_string (str): 要截断的字符串。该字符串可能包含多行。
+            max_word_count (int): 截断后字符串允许的最大词数。
 
-        Returns:
-            str: The truncated string with word count limited to `max_word_count`, preserving complete lines.
+        返回:
+            str: 词数限制为 `max_word_count` 并保持完整行的截断字符串。
         """
 
         word_count = 0
@@ -336,15 +336,15 @@ class ArticleTextProcessing:
     @staticmethod
     def remove_citations(s):
         """
-        Removes all citations from a given string. Citations are assumed to be in the format
-        of numbers enclosed in square brackets, such as [1], [2], or [1, 2], etc. This function searches
-        for all occurrences of such patterns and removes them, returning the cleaned string.
+        从给定字符串中移除所有引用标记。引用标记假定为方括号内的数字格式，
+        例如 [1]、[2] 或 [1, 2] 等。该函数搜索所有此类模式的出现并移除它们，
+        返回清理后的字符串。
 
-        Args:
-            s (str): The string from which citations are to be removed.
+        参数:
+            s (str): 要移除引用标记的字符串。
 
-        Returns:
-            str: The string with all citation patterns removed.
+        返回:
+            str: 移除所有引用标记模式后的字符串。
         """
 
         return re.sub(r"\[\d+(?:,\s*\d+)*\]", "", s)
@@ -366,56 +366,58 @@ class ArticleTextProcessing:
     @staticmethod
     def remove_uncompleted_sentences_with_citations(text):
         """
-        Removes uncompleted sentences and standalone citations from the input text. Sentences are identified
-        by their ending punctuation (.!?), optionally followed by a citation in square brackets (e.g., "[1]").
-        Grouped citations (e.g., "[1, 2]") are split into individual ones (e.g., "[1] [2]"). Only text up to
-        and including the last complete sentence and its citation is retained.
+        移除文本中不完整的句子和孤立的引用标记。
+
+        处理逻辑：
+        1. 通过句末标点符号（.!?）识别完整句子
+        2. 句末可选地跟随方括号引用标记（如 "[1]"）
+        3. 将组合引用（如 "[1, 2]"）拆分为独立引用（如 "[1] [2]"）
+        4. 仅保留最后一个完整句子及其引用之前的所有内容
 
         Args:
-            text (str): The input text from which uncompleted sentences and their citations are to be removed.
+            text (str): 需要处理的输入文本，将从中移除不完整句子和孤立引用。
 
         Returns:
-            str: The processed string with uncompleted sentences and standalone citations removed, leaving only
-            complete sentences and their associated citations if present.
+            str: 处理后的字符串，仅包含完整句子及其关联的引用标记（如有）。
         """
 
-        # Convert citations like [1, 2, 3] to [1][2][3].
+        # 将组合引用格式 [1, 2, 3] 转换为独立引用格式 [1][2][3]
         def replace_with_individual_brackets(match):
             numbers = match.group(1).split(", ")
             return " ".join(f"[{n}]" for n in numbers)
 
-        # Deduplicate and sort individual groups of citations.
+        # 对连续的引用标记进行去重和排序
         def deduplicate_group(match):
             citations = match.group(0)
             unique_citations = list(set(re.findall(r"\[\d+\]", citations)))
             sorted_citations = sorted(
                 unique_citations, key=lambda x: int(x.strip("[]"))
             )
-            # Return the sorted unique citations as a string
+            # 将去重排序后的引用标记拼接为字符串返回
             return "".join(sorted_citations)
 
         text = re.sub(r"\[([0-9, ]+)\]", replace_with_individual_brackets, text)
         text = re.sub(r"(\[\d+\])+", deduplicate_group, text)
 
-        # Deprecated: Remove sentence without proper ending punctuation and citations.
-        # Split the text into sentences (including citations).
+        # [已废弃] 以下是旧版实现：移除没有正确句末标点和引用的句子
+        # 将文本按句子分割（包含引用标记）
         # sentences_with_trailing = re.findall(r'([^.!?]*[.!?].*?)(?=[^.!?]*[.!?]|$)', text)
 
-        # Filter sentences to ensure they end with a punctuation mark and properly formatted citations
+        # 过滤句子，确保以标点符号和格式正确的引用结尾
         # complete_sentences = []
         # for sentence in sentences_with_trailing:
-        #     # Check if the sentence ends with properly formatted citations
+        #     # 检查句子是否以格式正确的引用结尾
         #     if re.search(r'[.!?]( \[\d+\])*$|^[^.!?]*[.!?]$', sentence.strip()):
         #         complete_sentences.append(sentence.strip())
 
         # combined_sentences = ' '.join(complete_sentences)
 
-        # Check for and append any complete citations that follow the last sentence
+        # 检查并追加最后一个句子之后的完整引用
         # trailing_citations = re.findall(r'(\[\d+\]) ', text[text.rfind(combined_sentences) + len(combined_sentences):])
         # if trailing_citations:
         #     combined_sentences += ' '.join(trailing_citations)
 
-        # Regex pattern to match sentence endings, including optional citation markers.
+        # 正则模式：匹配句子结尾，包括可选的引用标记
         eos_pattern = r"([.!?])\s*(\[\d+\])?\s*"
         matches = list(re.finditer(eos_pattern, text))
         if matches:
@@ -426,25 +428,50 @@ class ArticleTextProcessing:
 
     @staticmethod
     def clean_up_citation(conv):
+        """
+        清理对话中的引用标记和冗余内容。
+
+        处理逻辑：
+        1. 移除 "References:" 和 "Sources:" 及其后面的内容
+        2. 移除 "Answer:" 前缀
+        3. 移除超出实际搜索结果数量的无效引用标记
+        4. 移除不完整的句子和孤立引用
+
+        Args:
+            conv: 对话对象，包含 dlg_history 对话历史记录
+
+        Returns:
+            清理后的对话对象
+        """
         for turn in conv.dlg_history:
+            # 移除 "References:" 及其后面的所有内容
             if "References:" in turn.agent_utterance:
                 turn.agent_utterance = turn.agent_utterance[
                     : turn.agent_utterance.find("References:")
                 ]
+            # 移除 "Sources:" 及其后面的所有内容
             if "Sources:" in turn.agent_utterance:
                 turn.agent_utterance = turn.agent_utterance[
                     : turn.agent_utterance.find("Sources:")
                 ]
+            # 移除 "Answer:" 前缀并去除首尾空白
             turn.agent_utterance = turn.agent_utterance.replace("Answer:", "").strip()
+
+            # 提取文本中最大的引用编号
             try:
                 max_ref_num = max(
                     [int(x) for x in re.findall(r"\[(\d+)\]", turn.agent_utterance)]
                 )
             except Exception as e:
                 max_ref_num = 0
+
+            # 移除超出实际搜索结果数量的无效引用标记
+            # 例如：如果只有3个搜索结果，则移除 [4], [5] 等
             if max_ref_num > len(turn.search_results):
                 for i in range(len(turn.search_results), max_ref_num + 1):
                     turn.agent_utterance = turn.agent_utterance.replace(f"[{i}]", "")
+
+            # 移除不完整的句子和孤立的引用标记
             turn.agent_utterance = (
                 ArticleTextProcessing.remove_uncompleted_sentences_with_citations(
                     turn.agent_utterance

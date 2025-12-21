@@ -125,7 +125,8 @@ class WikiWriter(dspy.Module):
         dialogue_turns: List[DialogueTurn],
         draft_page=None,
     ):
-        """基于对话历史和角色生成下一个问题。
+        """
+        基于对话历史和角色**生成下一个问题**。
 
         Args:
             topic: 讨论的主题
@@ -144,6 +145,7 @@ class WikiWriter(dspy.Module):
             )
         # 保留最近4轮对话的完整内容
         for turn in dialogue_turns[-4:]:
+            # 移除文本中原有的引用标记。引用标记假定为方括号内的数字格式
             conv.append(
                 f"You: {turn.user_utterance}\nExpert: {ArticleTextProcessing.remove_citations(turn.agent_utterance)}"
             )
@@ -167,7 +169,10 @@ class WikiWriter(dspy.Module):
 
         return dspy.Prediction(question=question)
 
-
+# 你是一位经验丰富的维基百科撰稿人。
+# 你正在与一位专家交流，以获取你想要贡献的主题的相关信息。提出好的问题以获取与该主题更相关的有用信息。
+# 当你没有更多问题要问时，说“非常感谢您的帮助！”来结束对话。
+# 请每次只提出一个问题，不要重复之前问过的问题。你的问题应与你想要撰写的主题相关。
 class AskQuestion(dspy.Signature):
     """You are an experienced Wikipedia writer. You are chatting with an expert to get information for the topic you want to contribute. Ask good questions to get more useful information relevant to the topic.
     When you have no more question to ask, say "Thank you so much for your help!" to end the conversation.
@@ -179,21 +184,32 @@ class AskQuestion(dspy.Signature):
     question = dspy.OutputField(format=str)
 
 
+# 你是一位经验丰富的维基百科撰稿人，并且想要编辑某个特定页面。除了作为维基百科撰稿人的身份外，你在研究主题时也有特定的关注点。
+# 现在，你正在与一位专家交流以获取信息。提出好的问题以获取更有用的信息。
+# 当你没有更多问题要问时，说“非常感谢您的帮助！”来结束对话。
+# 请每次只提出一个问题，不要重复你之前问过的问题。你的问题应该与你想要撰写的主题相关。
 class AskQuestionWithPersona(dspy.Signature):
     """You are an experienced Wikipedia writer and want to edit a specific page. Besides your identity as a Wikipedia writer, you have specific focus when researching the topic.
     Now, you are chatting with an expert to get information. Ask good questions to get more useful information.
     When you have no more question to ask, say "Thank you so much for your help!" to end the conversation.
     Please only ask a question at a time and don't ask what you have asked before. Your questions should be related to the topic you want to write.
     """
-
+    # 您想要撰写的主题
     topic = dspy.InputField(prefix="Topic you want to write: ", format=str)
+    # 你的身份除了是维基百科的撰稿人之外：
     persona = dspy.InputField(
         prefix="Your persona besides being a Wikipedia writer: ", format=str
     )
+    # 对话历史记录
     conv = dspy.InputField(prefix="Conversation history:\n", format=str)
     question = dspy.OutputField(format=str)
 
-
+# 您想通过谷歌搜索来回答这个问题。请在搜索框中输入您要使用的查询内容。
+# 请按照以下格式填写您将使用的查询：
+# - 查询 1
+# - 查询 2
+# - ...
+# - 查询 n
 class QuestionToQuery(dspy.Signature):
     """You want to answer the question using Google search. What do you type in the search box?
     Write the queries you will use in the following format:
@@ -201,20 +217,28 @@ class QuestionToQuery(dspy.Signature):
     - query 2
     ...
     - query n"""
-
+    # 您正在讨论的主题是：
     topic = dspy.InputField(prefix="Topic you are discussing about: ", format=str)
+    # 您想要回答的问题
     question = dspy.InputField(prefix="Question you want to answer: ", format=str)
     queries = dspy.OutputField(format=str)
 
-
+# 你是一位善于有效利用信息的专家。
+# 你正在与一位想要为某个你熟悉的主题撰写维基百科条目的维基百科撰稿人进行交流。
+# 你已经收集到了相关的信息，现在将利用这些信息来给出回应。
+# 请让你的回复尽可能详尽，确保每一句话都有所依据，都能从收集到的信息中得到支持。
+# 如果[收集到的信息]与[主题]或[问题]没有直接关系，请根据现有信息提供最相关的答案。
+# 如果无法制定出合适的回答，就回复“基于现有的信息，我无法回答这个问题”，并解释任何限制或不足之处。
 class AnswerQuestion(dspy.Signature):
     """You are an expert who can use information effectively. You are chatting with a Wikipedia writer who wants to write a Wikipedia page on topic you know. You have gathered the related information and will now use the information to form a response.
     Make your response as informative as possible, ensuring that every sentence is supported by the gathered information. If the [gathered information] is not directly related to the [topic] or [question], provide the most relevant answer based on the available information. If no appropriate answer can be formulated, respond with, “I cannot answer this question based on the available information,” and explain any limitations or gaps.
     """
-
+    # 您正在讨论的主题是：
     topic = dspy.InputField(prefix="Topic you are discussing about:", format=str)
     conv = dspy.InputField(prefix="Question:\n", format=str)
+    # 收集到的信息
     info = dspy.InputField(prefix="Gathered information:\n", format=str)
+    # 现在请给出您的回答。（请尽量使用多种不同的来源，并且不要出现幻想内容。）
     answer = dspy.OutputField(
         prefix="Now give your response. (Try to use as many different sources as possible and add do not hallucinate.)\n",
         format=str,
@@ -227,12 +251,6 @@ class TopicExpert(dspy.Module):
     2. 使用查询语句搜索信息。
     3. 过滤掉不可靠的来源。
     4. 使用检索到的信息生成答案。
-
-    Answer questions using search-based retrieval and answer generation. This module conducts the following steps:
-    1. Generate queries from the question.
-    2. Search for information using the queries.
-    3. Filter out unreliable sources.
-    4. Generate an answer using the retrieved information.
     """
 
     def __init__(
@@ -242,7 +260,8 @@ class TopicExpert(dspy.Module):
         search_top_k: int,
         retriever: Retriever,
     ):
-        """初始化TopicExpert。
+        """
+        初始化TopicExpert。
 
         Args:
             engine: 用于生成查询和答案的语言模型引擎
@@ -253,6 +272,7 @@ class TopicExpert(dspy.Module):
         super().__init__()
         # 查询生成器:将问题转换为搜索查询
         self.generate_queries = dspy.Predict(QuestionToQuery)
+        # 搜索器
         self.retriever = retriever
         # 答案生成器:基于检索到的信息生成答案
         self.answer_question = dspy.Predict(AnswerQuestion)
@@ -261,7 +281,8 @@ class TopicExpert(dspy.Module):
         self.search_top_k = search_top_k
 
     def forward(self, topic: str, question: str, ground_truth_url: str):
-        """基于搜索检索和信息整合生成问题的答案。
+        """
+        基于搜索检索和信息整合生成问题的答案。
 
         Args:
             topic: 讨论的主题
@@ -273,7 +294,6 @@ class TopicExpert(dspy.Module):
         """
         with dspy.settings.context(lm=self.engine, show_guidelines=False):
             # 识别阶段:将问题分解为多个搜索查询
-            # Identify: Break down question into queries.
             queries = self.generate_queries(topic=topic, question=question).queries
             # 清理查询文本:移除连字符、引号等特殊字符
             queries = [
@@ -289,7 +309,6 @@ class TopicExpert(dspy.Module):
             )
             if len(searched_results) > 0:
                 # 评估阶段:简化处理,直接使用每个结果的top-1片段
-                # Evaluate: Simplify this part by directly using the top 1 snippet.
                 info = ""
                 # 遍历搜索结果,提取每个结果的第一个片段
                 for n, r in enumerate(searched_results):
@@ -465,7 +484,6 @@ class StormKnowledgeCurationModule(KnowledgeCurationModule):
             或者如果return_conversation_log为True，返回(信息表, 对话日志字典)的元组
         """
 
-        # 识别角色
         callback_handler.on_identify_perspective_start()
         considered_personas = []
         if disable_perspective:
