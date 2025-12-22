@@ -169,6 +169,7 @@ class WikiWriter(dspy.Module):
 
         return dspy.Prediction(question=question)
 
+
 # 你是一位经验丰富的维基百科撰稿人。
 # 你正在与一位专家交流，以获取你想要贡献的主题的相关信息。提出好的问题以获取与该主题更相关的有用信息。
 # 当你没有更多问题要问时，说“非常感谢您的帮助！”来结束对话。
@@ -194,6 +195,7 @@ class AskQuestionWithPersona(dspy.Signature):
     When you have no more question to ask, say "Thank you so much for your help!" to end the conversation.
     Please only ask a question at a time and don't ask what you have asked before. Your questions should be related to the topic you want to write.
     """
+
     # 您想要撰写的主题
     topic = dspy.InputField(prefix="Topic you want to write: ", format=str)
     # 你的身份除了是维基百科的撰稿人之外：
@@ -203,6 +205,7 @@ class AskQuestionWithPersona(dspy.Signature):
     # 对话历史记录
     conv = dspy.InputField(prefix="Conversation history:\n", format=str)
     question = dspy.OutputField(format=str)
+
 
 # 您想通过谷歌搜索来回答这个问题。请在搜索框中输入您要使用的查询内容。
 # 请按照以下格式填写您将使用的查询：
@@ -217,11 +220,13 @@ class QuestionToQuery(dspy.Signature):
     - query 2
     ...
     - query n"""
+
     # 您正在讨论的主题是：
     topic = dspy.InputField(prefix="Topic you are discussing about: ", format=str)
     # 您想要回答的问题
     question = dspy.InputField(prefix="Question you want to answer: ", format=str)
     queries = dspy.OutputField(format=str)
+
 
 # 你是一位善于有效利用信息的专家。
 # 你正在与一位想要为某个你熟悉的主题撰写维基百科条目的维基百科撰稿人进行交流。
@@ -233,6 +238,7 @@ class AnswerQuestion(dspy.Signature):
     """You are an expert who can use information effectively. You are chatting with a Wikipedia writer who wants to write a Wikipedia page on topic you know. You have gathered the related information and will now use the information to form a response.
     Make your response as informative as possible, ensuring that every sentence is supported by the gathered information. If the [gathered information] is not directly related to the [topic] or [question], provide the most relevant answer based on the available information. If no appropriate answer can be formulated, respond with, “I cannot answer this question based on the available information,” and explain any limitations or gaps.
     """
+
     # 您正在讨论的主题是：
     topic = dspy.InputField(prefix="Topic you are discussing about:", format=str)
     conv = dspy.InputField(prefix="Question:\n", format=str)

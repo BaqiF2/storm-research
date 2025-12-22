@@ -254,14 +254,14 @@ class StormArticle(Article):
         self, node: ArticleSectionNode, name: str
     ) -> Optional[ArticleSectionNode]:
         """
-        Return the node of the section given the section name.
+        根据章节名称查找并返回对应的节点。
 
         Args:
-            node: the node as the root to find.
-            name: the name of node as section name
+            node: 作为查找根节点的起始节点。
+            name: 节点名称，即章节名称
 
         Return:
-            reference of the node or None if section name has no match
+            节点的引用，如果章节名称没有匹配则返回None
         """
         if node.section_name == name:
             return node
@@ -275,16 +275,16 @@ class StormArticle(Article):
         self, new_info_list: List[Information], index_to_keep=None
     ) -> Dict[int, int]:
         """
-        Merges new storm information into existing references and updates the citation index mapping.
+        将新的storm信息合并到现有引用中，并更新引用索引映射。
 
         Args:
-        new_info_list (List[Information]): A list of dictionaries representing new storm information.
-        index_to_keep (List[int]): A list of index of the new_info_list to keep. If none, keep all.
+        new_info_list (List[Information]): 表示新storm信息的字典列表。
+        index_to_keep (List[int]): 要保留的new_info_list的索引列表。如果为None，则保留所有。
 
         Returns:
-        Dict[int, int]: A dictionary mapping the index of each storm information piece in the input list
-                        to its unified citation index in the references.
+        Dict[int, int]: 一个字典，将输入列表中每个storm信息的索引映射到引用中的统一引用索引。
         """
+        # 关键路径：合并新的引用信息，去重并更新索引映射
         citation_idx_mapping = {}
         for idx, storm_info in enumerate(new_info_list):
             if index_to_keep is not None and idx not in index_to_keep:
@@ -312,24 +312,38 @@ class StormArticle(Article):
         parent_section_name: str = None,
         trim_children=False,
     ):
+        """
+        根据字典结构插入或创建文章章节。
+
+        Args:
+            article_dict: 包含章节信息的字典结构
+            parent_section_name: 父章节名称，默认为None（使用根节点）
+            trim_children: 是否裁剪不在article_dict中的子章节，默认为False
+        """
+        # 关键路径：查找父节点，如果未指定则使用根节点
         parent_node = (
             self.root
             if parent_section_name is None
             else self.find_section(self.root, parent_section_name)
         )
 
+        # 关键路径：根据trim_children标志决定是否裁剪子节点
         if trim_children:
             section_names = set(article_dict.keys())
             for child in parent_node.children[:]:
                 if child.section_name not in section_names:
                     parent_node.remove_child(child)
 
+        # 关键路径：遍历所有章节，插入或更新节点
         for section_name, content_dict in article_dict.items():
+            # 在父节点中查找当前章节节点
             current_section_node = self.find_section(parent_node, section_name)
             if current_section_node is None:
+                # 如果章节不存在，则创建新节点
                 current_section_node = ArticleSectionNode(
                     section_name=section_name, content=content_dict["content"].strip()
                 )
+                # 关键路径：如果是根节点下的summary章节，插入到前面
                 insert_to_front = (
                     parent_node.section_name == self.root.section_name
                     and current_section_node.section_name == "summary"
@@ -338,8 +352,10 @@ class StormArticle(Article):
                     current_section_node, insert_to_front=insert_to_front
                 )
             else:
+                # 如果章节已存在，则更新内容
                 current_section_node.content = content_dict["content"].strip()
 
+            # 递归处理子章节
             self.insert_or_create_section(
                 article_dict=content_dict["subsections"],
                 parent_section_name=section_name,
@@ -353,22 +369,24 @@ class StormArticle(Article):
         parent_section_name: Optional[str] = None,
     ) -> Optional[ArticleSectionNode]:
         """
-        Add new section to the article.
+        向文章添加或更新章节。
 
         Args:
-            current_section_name: new section heading name in string format.
-            parent_section_name: under which parent section to add the new one. Default to root.
-            current_section_content: optional section content.
+            current_section_content: 新章节的标题名称，字符串格式。
+            current_section_info_list: 章节内容的信息列表。
+            parent_section_name: 要添加新章节的父章节名称。默认为根节点。
+            current_section_content: 可选的章节内容。
 
         Returns:
-            the ArticleSectionNode for current section if successfully created / updated. Otherwise none.
+            如果成功创建/更新，则返回当前章节的ArticleSectionNode。否则返回None。
         """
-
+        # 关键路径：处理引用信息，更新引用索引
         if current_section_info_list is not None:
+            # 从内容中提取引用编号
             references = set(
                 [int(x) for x in re.findall(r"\[(\d+)\]", current_section_content)]
             )
-            # for any reference number greater than max number of references, delete the reference
+            # 对于超出最大引用数的引用编号，删除该引用
             if len(references) > 0:
                 max_ref_num = max(references)
                 if max_ref_num > len(current_section_info_list):
@@ -378,15 +396,17 @@ class StormArticle(Article):
                         )
                         if i in references:
                             references.remove(i)
-            # for any reference that is not used, trim it from current_section_info_list
+            # 对于未使用的引用，从current_section_info_list中裁剪掉
             index_to_keep = [i - 1 for i in references]
             citation_mapping = self._merge_new_info_to_references(
                 current_section_info_list, index_to_keep
             )
+            # 更新内容中的引用索引
             current_section_content = ArticleTextProcessing.update_citation_index(
                 current_section_content, citation_mapping
             )
 
+        # 关键路径：解析内容并插入章节
         if parent_section_name is None:
             parent_section_name = self.root.section_name
         article_dict = ArticleTextProcessing.parse_article_into_dict(
@@ -405,74 +425,85 @@ class StormArticle(Article):
         include_root: bool = True,
     ) -> List[str]:
         """
-        Get outline of the article as a list.
+        获取文章大纲为列表形式。
 
         Args:
-            section_name: get all section names in pre-order travel ordering in the subtree of section_name.
-                          For example:
+            root_section_name: 获取指定章节名称的子树中所有章节名称，采用前序遍历顺序。
+                          例如：
                             #root
                             ##section1
                             ###section1.1
                             ###section1.2
                             ##section2
-                          article.get_outline_as_list("section1") returns [section1, section1.1, section1.2, section2]
+                          article.get_outline_as_list("section1") 返回 [section1, section1.1, section1.2, section2]
+            add_hashtags: 是否添加井号标记（#）用于表示层级，默认为False
+            include_root: 是否包含根节点，默认为True
 
         Returns:
-            list of section and subsection names.
+            章节和子章节名称的列表。
         """
+        # 关键路径：根据root_section_name查找节点
         if root_section_name is None:
             section_node = self.root
         else:
             section_node = self.find_section(self.root, root_section_name)
+            # 如果查找的不是根节点，则调整include_root标志
             include_root = include_root or section_node != self.root.section_name
         if section_node is None:
             return []
         result = []
 
         def preorder_traverse(node, level):
-            prefix = (
-                "#" * level if add_hashtags else ""
-            )  # Adjust level if excluding root
+            # 关键路径：构建前缀符号（#）表示层级
+            prefix = "#" * level if add_hashtags else ""  # 如果排除根节点，则调整层级
             result.append(
                 f"{prefix} {node.section_name}".strip()
                 if add_hashtags
                 else node.section_name
             )
+            # 递归遍历子节点
             for child in node.children:
                 preorder_traverse(child, level + 1)
 
-        # Adjust the initial level based on whether root is included and hashtags are added
+        # 关键路径：根据是否包含根节点和添加井号标记调整初始层级
         if include_root:
             preorder_traverse(section_node, level=1)
         else:
+            # 不包含根节点时，只遍历子节点
             for child in section_node.children:
                 preorder_traverse(child, level=1)
         return result
 
     def to_string(self) -> str:
         """
-        Get outline of the article as a list.
+        将文章转换为字符串格式。
 
         Returns:
-            list of section and subsection names.
+            包含章节和子章节名称及其内容的字符串列表。
         """
         result = []
 
         def preorder_traverse(node, level):
+            # 关键路径：构建章节标题前缀
             prefix = "#" * level
             result.append(f"{prefix} {node.section_name}".strip())
             result.append(node.content)
+            # 递归遍历子节点
             for child in node.children:
                 preorder_traverse(child, level + 1)
 
-        # Adjust the initial level based on whether root is included and hashtags are added
+        # 关键路径：从根节点的子节点开始遍历
         for child in self.root.children:
             preorder_traverse(child, level=1)
+        # 清理空行并合并
         result = [i.strip() for i in result if i is not None and i.strip()]
         return "\n\n".join(result)
 
     def reorder_reference_index(self):
-        # pre-order traversal to get order of references appear in the article
+        """
+        重新排序引用索引，使引用编号按照文章中出现的顺序重新排列。
+        """
+        # 关键路径：前序遍历文章，获取引用在文章中出现的顺序
         ref_indices = []
 
         def pre_order_find_index(node):
@@ -485,13 +516,13 @@ class StormArticle(Article):
                     pre_order_find_index(child)
 
         pre_order_find_index(self.root)
-        # constrcut index mapping
+        # 构建索引映射：旧索引 -> 新索引
         ref_index_mapping = {}
         for ref_index in ref_indices:
             if ref_index not in ref_index_mapping:
                 ref_index_mapping[ref_index] = len(ref_index_mapping) + 1
 
-        # update content
+        # 关键路径：更新内容中的引用索引
         def pre_order_update_index(node):
             if node is not None:
                 if node.content is not None and node.content:
@@ -502,18 +533,25 @@ class StormArticle(Article):
                     pre_order_update_index(child)
 
         pre_order_update_index(self.root)
-        # update reference
+        # 关键路径：更新引用字典中的索引
         for url in list(self.reference["url_to_unified_index"]):
             pre_index = self.reference["url_to_unified_index"][url]
             if pre_index not in ref_index_mapping:
+                # 如果旧索引不在映射中，则删除该引用
                 del self.reference["url_to_unified_index"][url]
             else:
+                # 更新为新的索引
                 new_index = ref_index_mapping[pre_index]
                 self.reference["url_to_unified_index"][url] = new_index
 
     def get_outline_tree(self):
+        """
+        获取文章大纲的树形结构。
+        """
+
         def build_tree(node) -> Dict[str, Dict]:
             tree = {}
+            # 递归构建子树
             for child in node.children:
                 tree[child.section_name] = build_tree(child)
             return tree if tree else {}
@@ -522,14 +560,22 @@ class StormArticle(Article):
 
     def get_first_level_section_names(self) -> List[str]:
         """
-        Get first level section names
+        获取一级章节名称列表。
         """
+        # 关键路径：返回根节点的所有直接子节点名称
         return [i.section_name for i in self.root.children]
 
     @classmethod
     def from_outline_file(cls, topic: str, file_path: str):
         """
-        Create StormArticle class instance from outline file.
+        从大纲文件创建StormArticle类实例。
+
+        Args:
+            topic: 文章主题
+            file_path: 大纲文件路径
+
+        Returns:
+            StormArticle实例
         """
         outline_str = FileIOHelper.load_str(file_path)
         return StormArticle.from_outline_str(topic=topic, outline_str=outline_str)
@@ -537,10 +583,18 @@ class StormArticle(Article):
     @classmethod
     def from_outline_str(cls, topic: str, outline_str: str):
         """
-        Create StormArticle class instance from outline only string.
+        从大纲字符串创建StormArticle类实例。
+
+        Args:
+            topic: 文章主题
+            outline_str: 大纲字符串
+
+        Returns:
+            StormArticle实例
         """
         lines = []
         try:
+            # 关键路径：解析大纲字符串，去除空行
             lines = outline_str.split("\n")
             lines = [line.strip() for line in lines if line.strip()]
         except:
@@ -548,16 +602,17 @@ class StormArticle(Article):
 
         instance = cls(topic)
         if lines:
-            a = lines[0].startswith("#") and lines[0].replace("#", "").strip().lower()
-            b = topic.lower().replace("_", " ")
+            # 关键路径：检查第一行是否为主题行，调整层级
             adjust_level = lines[0].startswith("#") and lines[0].replace(
                 "#", ""
             ).strip().lower() == topic.lower().replace("_", " ")
             if adjust_level:
                 lines = lines[1:]
-            node_stack = [(0, instance.root)]  # Stack to keep track of (level, node)
+            # 关键路径：使用栈结构维护层级关系
+            node_stack = [(0, instance.root)]  # 栈用于跟踪（层级，节点）
 
             for line in lines:
+                # 计算当前行的层级和章节名称
                 level = line.count("#") - adjust_level
                 section_name = line.replace("#", "").strip()
 
@@ -566,32 +621,68 @@ class StormArticle(Article):
 
                 new_node = ArticleSectionNode(section_name)
 
+                # 关键路径：维护栈，确保当前节点父级关系正确
                 while node_stack and level <= node_stack[-1][0]:
                     node_stack.pop()
 
+                # 添加新节点到当前父节点
                 node_stack[-1][1].add_child(new_node)
                 node_stack.append((level, new_node))
         return instance
 
     def dump_outline_to_file(self, file_path):
+        """
+        将文章大纲导出到文件。
+
+        Args:
+            file_path: 输出文件路径
+        """
+        # 关键路径：生成带井号标记的大纲，不包含根节点
         outline = self.get_outline_as_list(add_hashtags=True, include_root=False)
         FileIOHelper.write_str("\n".join(outline), file_path)
 
     def dump_reference_to_file(self, file_path):
+        """
+        将引用信息导出到文件。
+
+        Args:
+            file_path: 输出文件路径
+        """
+        # 关键路径：深度复制引用并转换为字典格式
         reference = copy.deepcopy(self.reference)
         for url in reference["url_to_info"]:
             reference["url_to_info"][url] = reference["url_to_info"][url].to_dict()
         FileIOHelper.dump_json(reference, file_path)
 
     def dump_article_as_plain_text(self, file_path):
+        """
+        将文章导出为纯文本文件。
+
+        Args:
+            file_path: 输出文件路径
+        """
+        # 关键路径：将文章转换为字符串并写入文件
         text = self.to_string()
         FileIOHelper.write_str(text, file_path)
 
     @classmethod
     def from_string(cls, topic_name: str, article_text: str, references: dict):
+        """
+        从字符串和引用信息创建StormArticle实例。
+
+        Args:
+            topic_name: 文章主题名称
+            article_text: 文章文本内容
+            references: 引用信息字典
+
+        Returns:
+            StormArticle实例
+        """
+        # 关键路径：解析文本并创建章节结构
         article_dict = ArticleTextProcessing.parse_article_into_dict(article_text)
         article = cls(topic_name=topic_name)
         article.insert_or_create_section(article_dict=article_dict)
+        # 关键路径：将引用字典转换为Information对象
         for url in list(references["url_to_info"]):
             references["url_to_info"][url] = Information.from_dict(
                 references["url_to_info"][url]
@@ -600,5 +691,9 @@ class StormArticle(Article):
         return article
 
     def post_processing(self):
+        """
+        文章后处理：清理空节点并重新排序引用索引。
+        """
+        # 关键路径：首先清理空节点，然后重新排序引用
         self.prune_empty_nodes()
         self.reorder_reference_index()

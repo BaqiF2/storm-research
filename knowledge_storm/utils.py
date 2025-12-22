@@ -482,29 +482,52 @@ class ArticleTextProcessing:
 
     @staticmethod
     def clean_up_outline(outline, topic=""):
-        output_lines = []
-        current_level = 0  # To track the current section level
+        """
+        清理文章大纲，移除冗余引用和无关章节
 
+        处理逻辑：
+        1. 规范化标题层级结构（# 和 - 格式）
+        2. 移除参考文献、附录等非正文章节
+        3. 清理引用标记
+
+        Args:
+            outline (str): 原始文章大纲
+            topic (str): 可选参数，指定要保留的主题章节
+
+        Returns:
+            str: 清理后的大纲
+        """
+        # 初始化输出列表和当前层级跟踪
+        output_lines = []
+        current_level = 0  # 用于跟踪当前章节层级
+
+        # 遍历大纲的每一行
         for line in outline.split("\n"):
             stripped_line = line.strip()
 
+            # 如果指定了主题，清空之前的输出（从指定主题重新开始）
             if topic != "" and f"# {topic.lower()}" in stripped_line.lower():
                 output_lines = []
 
-            # Check if the line is a section header
+            # 检查是否为章节标题（以 # 开头）
             if stripped_line.startswith("#"):
+                # 记录标题层级（统计 # 数量）
                 current_level = stripped_line.count("#")
                 output_lines.append(stripped_line)
-            # Check if the line is a bullet point
+            # 检查是否为要点列表项（以 - 开头）
             elif stripped_line.startswith("-"):
+                # 根据当前层级转换为子标题格式
+                # 例如：- 背景 -> ## 背景（如果当前层级为 #）
                 subsection_header = (
                     "#" * (current_level + 1) + " " + stripped_line[1:].strip()
                 )
                 output_lines.append(subsection_header)
 
+        # 将处理后的行合并为字符串
         outline = "\n".join(output_lines)
 
-        # Remove references.
+        # 移除参考文献相关章节（使用正则表达式匹配多种标题变体）
+        # 此处处理各种可能的参考文献标题格式
         outline = re.sub(r"#[#]? See also.*?(?=##|$)", "", outline, flags=re.DOTALL)
         outline = re.sub(r"#[#]? See Also.*?(?=##|$)", "", outline, flags=re.DOTALL)
         outline = re.sub(r"#[#]? Notes.*?(?=##|$)", "", outline, flags=re.DOTALL)
@@ -525,7 +548,7 @@ class ArticleTextProcessing:
         outline = re.sub(r"#[#]? Summary.*?(?=##|$)", "", outline, flags=re.DOTALL)
         outline = re.sub(r"#[#]? Appendices.*?(?=##|$)", "", outline, flags=re.DOTALL)
         outline = re.sub(r"#[#]? Appendix.*?(?=##|$)", "", outline, flags=re.DOTALL)
-        # clean up citation in outline
+        # 清理大纲中的引用标记 [1], [2, 3] 等
         outline = re.sub(r"\[.*?\]", "", outline)
         return outline
 

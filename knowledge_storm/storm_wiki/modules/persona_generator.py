@@ -80,11 +80,16 @@ def get_wiki_page_title_and_toc(url):
     # 我正在为下面提到的主题撰写维基百科页面。请识别并推荐一些密切相关主题的维基百科页面。
     # 我正在寻找能够提供与该主题相关的有趣方面见解的示例，或者帮助我理解类似主题的维基百科页面中
     # 通常包含的典型内容和结构的示例。请在单独的行中列出URL。
+
+
 class FindRelatedTopic(dspy.Signature):
     """I'm writing a Wikipedia page for a topic mentioned below. Please identify and recommend some Wikipedia pages on closely related subjects. I'm looking for examples that provide insights into interesting aspects commonly associated with this topic, or examples that help me understand the typical content and structure included in Wikipedia pages for similar topics.
     Please list the urls in separate lines."""
+
     topic = dspy.InputField(prefix="Topic of interest:", format=str)  # 感兴趣的主题
     related_topics = dspy.OutputField(format=str)  # 相关主题列表
+
+
 #
 #     您需要选择一组维基百科编辑者，他们将共同合作创建一篇关于该主题的综合性文章。
 #     他们每个人都代表与该主题相关的不同视角、角色或关联。您可以使用其他相关主题的维基百科页面
@@ -94,6 +99,7 @@ class GenPersona(dspy.Signature):
     """You need to select a group of Wikipedia editors who will work together to create a comprehensive article on the topic. Each of them represents a different perspective, role, or affiliation related to this topic. You can use other Wikipedia pages of related topics for inspiration. For each editor, add a description of what they will focus on.
     Give your answer in the following format: 1. short summary of editor 1: description\n2. short summary of editor 2: description\n...
     """
+
     # 感兴趣的主题
     topic = dspy.InputField(prefix="Topic of interest:", format=str)
     # 相关主题的维基页面概述，以供获取灵感：
