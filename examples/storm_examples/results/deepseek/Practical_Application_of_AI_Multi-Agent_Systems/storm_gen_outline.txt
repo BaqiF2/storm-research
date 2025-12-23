@@ -1,0 +1,54 @@
+# Introduction
+## Definition and Core Concepts
+### Distinction from Monolithic and Single-Agent Systems
+## Historical Context and Evolution
+# Fundamental Principles and Architecture
+## Agent Architectures
+### Reactive, Deliberative, and Hybrid Models
+### Dominance of Hybrid BDI Architectures in Practical Systems
+## Communication and Coordination Mechanisms
+### Standardized Agent Communication Protocols (e.g., MCP, ACP, A2A)
+### Coordination and Orchestration Patterns (Concurrent, Group Chat, Handoff)
+### Formal Models for Coordination (e.g., Bigraphical Reactive Systems, RMTDP)
+## Negotiation, Collaboration, and Organizational Models
+# Practical Advantages and Benefits
+## Scalability and Parallel Processing
+## Robustness, Resilience, and Fault Tolerance
+## Flexibility, Adaptability, and Modularity
+## Specialization and Distributed Knowledge Integration
+# Major Application Domains and Implementations
+## Transportation, Logistics, and Supply Chain Management
+### Traffic Management and Autonomous Vehicle Coordination
+### Fleet and Supply Chain Optimization
+## Finance and Banking
+### Fraud Detection, Risk Assessment, and Algorithmic Trading
+## E-Commerce and Customer Experience
+### Personalized Interaction and Dynamic Service Management
+## Healthcare
+### Collaborative Diagnostic and Treatment Planning Systems
+## Network and Resource Management
+### Telecommunications and Smart Grids
+## Embodied Multi-Agent Systems
+### Core Characteristics and Distinction from Software-Only MAS
+### Robotics and Autonomous Systems (Swarms, Fleets, Humanoid Robots)
+### Intelligent Manufacturing and Industrial Automation
+# Design, Implementation, and Operational Considerations
+## System Design Methodologies for Practical Deployment
+## Challenges in Real-World Coordination and Scalability
+### Embodiment-Specific Challenges (Localization, Communication Constraints, Collision Avoidance)
+## Handling Uncertainty, Dynamic Environments, and Incomplete Information
+## Security, Trust, and Reputation Mechanisms
+## Ethical and Safety Considerations
+# Case Studies and Real-World Examples
+## Industrial Deployment in Logistics or Manufacturing
+## Embodied System Case Study (e.g., Drone Swarms for Search and Rescue)
+## Commercial Deployment in Finance or E-Commerce
+# Evaluation and Performance Metrics
+## Metrics for Operational Efficiency, Robustness, and Economic Impact
+## Benchmark Problems and Testbeds
+## Validation and Verification Techniques
+# Current Trends and Future Directions
+## Convergence with Large Language Models (LLMs) and Foundational Models
+## Advanced Human-Agent Collaboration
+## Decentralized Autonomous Organizations (DAOs) and Agent Economies
+## Ethical AI, Governance, and Responsible Deployment
