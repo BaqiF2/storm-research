@@ -1,15 +1,15 @@
-🎯 这个阶段在做什么？（核心业务）
+#### 🎯 这个阶段在做什么？（核心业务）
 
 简单说：这是一个"文字编辑"在工作
 - 就像对写好的文章进行最后一轮精修，添加摘要和删除冗余
 - 它基于第三阶段生成的草稿文章，进行质量优化
 - 产出：一篇格式规范、无重复内容、带有摘要的完整文章
 
-📞 完整调用链条解析
+#### 📞 完整调用链条解析
 
 第一层：总指挥（STORM.run方法）
 
-# 这就像主编决定："现在进入最后阶段，进行文章润色"
+这就像主编决定："现在进入最后阶段，进行文章润色"
 if do_polish_article:
     self.run_article_polishing_module(...)
 作用：检查是否需要执行文章润色阶段
@@ -17,7 +17,7 @@ if do_polish_article:
 第二层：草稿加载管理员（_load_draft_article_from_local_fs）
 
 如果没有执行文章生成阶段：
-# "之前的文章草稿在哪里？去把成品仓库搬出来"
+"之前的文章草稿在哪里？去把成品仓库搬出来"
 if draft_article is None:
     draft_article_path = os.path.join(
         self.article_output_dir, "storm_gen_article.txt"
@@ -35,7 +35,7 @@ if draft_article is None:
 
 第三层：文章润色专家（run_article_polishing_module）
 
-# "对草稿进行最终润色处理"
+"对草稿进行最终润色处理"
 self.run_article_polishing_module(
     draft_article=draft_article, remove_duplicate=remove_duplicate
 )
@@ -125,13 +125,13 @@ self.run_article_polishing_module(
 
 第六层：回调通知系统
 
-# "报告总部：文章润色完成！"
+"报告总部：文章润色完成！"
 callback_handler.on_article_polishing_end(...)
 - 通知前端界面：文章已润色完成
 - 提供进度反馈
 - 传递润色后的完整文章内容
 
-🔍 核心业务逻辑解析
+#### 🔍 核心业务逻辑解析
 
 为什么需要摘要部分？
 
@@ -155,18 +155,6 @@ callback_handler.on_article_polishing_end(...)
 - True：最终交付版本，需要最高质量
 - False：快速预览或迭代开发阶段
 
-断点续传机制
-
-# "如果跳过了文章生成，从哪里找草稿？"
-if draft_article is None:
-    # 从storm_gen_article.txt加载文章
-    # 从url_to_info.json加载引用信息
-
-这个机制很重要：
-- 支持灵活的工作流：可以只执行文章润色，不执行前面的生成
-- 前提：本地已经保存了storm_gen_article.txt和url_to_info.json
-- 优势：避免重复执行耗时的文章生成阶段
-
 双重文件策略
 
 为什么需要两个文件？
@@ -178,7 +166,7 @@ if draft_article is None:
 - 易于调试：可以独立查看和修改
 - 空间效率：避免重复存储相同信息
 
-🎨 整体业务逻辑（用比喻）
+#### 🎨 整体业务逻辑（用比喻）
 
 就像出版一本书的最后环节：
 
@@ -200,7 +188,7 @@ if draft_article is None:
    - 最终质量检查
 6. 秘书（callback_handler）：通知大家"书籍已准备好出版"
 
-最终产出：
+#### 最终产出：
 - 一个完整的StormArticle对象（包含：摘要、润色后的章节内容、引用列表）
 - 符合维基百科格式标准的文章
 - 支持断点续传：可以跳过前置阶段，直接从保存的文件加载中间结果

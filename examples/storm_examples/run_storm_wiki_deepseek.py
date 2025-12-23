@@ -91,23 +91,23 @@ def main(args):
 
     # 对话模拟器语言模型：用于模拟专家与用户的对话
     conv_simulator_lm = DeepSeekModel(
-        model=args.model, max_tokens=500, **deepseek_kwargs
+        model=args.model, max_tokens=4000, **deepseek_kwargs
     )
 
     # 问题生成语言模型：用于生成信息搜集问题
     question_asker_lm = DeepSeekModel(
-        model=args.model, max_tokens=500, **deepseek_kwargs
+        model=args.model, max_tokens=4000, **deepseek_kwargs
     )
 
     # 大纲生成语言模型：用于生成文章大纲
-    outline_gen_lm = DeepSeekModel(model=args.model, max_tokens=400, **deepseek_kwargs)
+    outline_gen_lm = DeepSeekModel(model=args.model, max_tokens=4000, **deepseek_kwargs)
 
     # 文章生成语言模型：用于生成文章内容
-    article_gen_lm = DeepSeekModel(model=args.model, max_tokens=700, **deepseek_kwargs)
+    article_gen_lm = DeepSeekModel(model=args.model, max_tokens=8000, **deepseek_kwargs)
 
     # 文章润色语言模型：用于润色和完善文章
     article_polish_lm = DeepSeekModel(
-        model=args.model, max_tokens=4000, **deepseek_kwargs
+        model=args.model, max_tokens=8000, **deepseek_kwargs
     )
 
     # 配置 STORM 流程中各个阶段使用的语言模型
@@ -204,7 +204,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-thread-num",
         type=int,
-        default=3,
+        default=4,
         help="使用的最大线程数。信息搜集和文章生成部分可以通过多线程加速。"
         "如果频繁遇到调用 LM API 时的'超出速率限制'错误，请考虑减少此值。",
     )
@@ -259,20 +259,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-perspective",
         type=int,
-        default=3,
+        default=6,
         help="视角引导式提问中要考虑的最大视角数量。",
     )
     parser.add_argument(
         "--search-top-k",
         type=int,
-        default=3,
+        default=5,
         help="每个搜索查询要考虑的前 k 个搜索结果。",
     )
     # 写作阶段的超参数
     parser.add_argument(
         "--retrieve-top-k",
         type=int,
-        default=3,
+        default=5,
         help="每个章节标题收集的前 k 个参考文献。",
     )
     parser.add_argument(
